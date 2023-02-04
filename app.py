@@ -219,7 +219,7 @@ def node() -> Response:
 
 @app.route("/cloud/job/", methods=["GET", "POST", "DELETE"])
 def job() -> Response:
-    """monitoring 3. cloud job ls [NODE_ID]"""
+    """monitoring: 3. cloud job ls [NODE_ID]"""
     if request.method == "GET":
         pass
 
@@ -236,8 +236,8 @@ def job() -> Response:
 
 @app.route("/cloud/log/", methods=["GET"])
 def log() -> Response:
-    """monitoring 4. cloud job log JOB_ID"""
-    """monitoring 5. cloud log node NODE_ID"""
+    """monitoring: 4. cloud job log JOB_ID"""
+    """monitoring: 5. cloud log node NODE_ID"""
     if request.method == "GET":
         pass
 
