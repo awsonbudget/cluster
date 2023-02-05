@@ -57,7 +57,7 @@ class Pod(object):
             return self.nodes.pop(name)
 
 
-class Cloud(object):
+class Cluster(object):
     def __init__(self):
         # The outer dict has pod_name as the key
         # The inner dict has node_name as the key and node_id as the value
@@ -81,7 +81,7 @@ class Cloud(object):
         return None
 
 
-cloud: Cloud = Cloud()
+cluster: Cluster= Cluster()
 
 
 @app.route("/cloud/", methods=["POST"])
@@ -89,7 +89,7 @@ def init():
     """management: 1. cloud init"""
     try:
         dc.images.pull("ubuntu")  # Assume all containers run on Ubuntu
-        cloud.register_pod("default")
+        cluster.register_pod("default")
         return jsonify(status=True, msg="setup completed")
 
     except docker.errors.APIError as e:
@@ -105,24 +105,24 @@ def pod() -> Response:
     """monitoring: 1. cloud pod ls"""
     if request.method == "GET":
         rtn = []
-        for pod in cloud.pods.values():
+        for pod in cluster.pods.values():
             rtn.append(jsonify(name=pod.name, id=pod.id, nodes=len(pod.nodes)))
         return jsonify(status=True, data=rtn)
 
     """management: 2. cloud pod register POD_NAME"""
     if request.method == "POST":
-        if cloud.get_pod(pod_name) != None:
+        if cluster.get_pod(pod_name) != None:
             return jsonify(
                 status=False, msg=f"cluster: {pod_name} is already a pod in pods"
             )
 
-        cloud.register_pod(pod_name)
+        cluster.register_pod(pod_name)
         return jsonify(status=True, msg=f"cluster: {pod_name} is added as a pod")
 
     """management: 3. cloud pod rm POD_NAME"""
     if request.method == "DELETE":
         # TODO: check for instances before removing
-        rtn = cloud.remove_pod(pod_name)
+        rtn = cluster.remove_pod(pod_name)
         if rtn == False:
             return jsonify(
                 status=False, msg=f"cluster: {pod_name} is not a pod in pods"
@@ -142,16 +142,16 @@ def node() -> Response:
     if request.method == "GET":
         if pod_name == None:
             rtn = []
-            for pod in cloud.pods.values():
+            for pod in cluster.pods.values():
                 for node in pod.nodes.values():
                     rtn.append(jsonify(name=node.name, id=node.id, status=node.status))
             return jsonify(status=True, data=rtn)
 
         assert pod_name != None
-        if cloud.get_pod(pod_name) == None:
+        if cluster.get_pod(pod_name) == None:
             return jsonify(status=False, msg=f"cluster: pod {pod_name} does not exist")
 
-        pod = cloud.get_pod(pod_name)
+        pod = cluster.get_pod(pod_name)
         assert pod != None
 
         rtn = []
@@ -163,9 +163,9 @@ def node() -> Response:
     if request.method == "POST":
         if pod_name == None:
             pod_name = "default"
-        if cloud.get_pod(pod_name) == None:
+        if cluster.get_pod(pod_name) == None:
             return jsonify(status=False, msg=f"cluster: pod {pod_name} does not exist")
-        pod = cloud.get_pod(pod_name)
+        pod = cluster.get_pod(pod_name)
         assert pod != None
         if pod.get_node(node_name) != None:
             return jsonify(
@@ -192,9 +192,9 @@ def node() -> Response:
     if request.method == "DELETE":
         if pod_name == None:
             pod_name = "default"
-        if cloud.get_pod(pod_name) == None:
+        if cluster.get_pod(pod_name) == None:
             return jsonify(status=False, msg=f"cluster: pod {pod_name} does not exist")
-        pod = cloud.get_pod(pod_name)
+        pod = cluster.get_pod(pod_name)
         assert pod != None
         node = pod.get_node(node_name)
         if node == None:
