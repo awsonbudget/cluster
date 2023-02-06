@@ -10,12 +10,12 @@ app.debug = True
 dc = docker.from_env()
 
 
-class Status(Enum):
-    IDLE = 1
-    RUNNING = 2
-    REGISTERED = 3
-    COMPLETED = 4
-    ABORTED = 5
+class Status(str, Enum):
+    IDLE = "idle"
+    RUNNING = "running"
+    REGISTERED = "registered"
+    COMPLETED = "completed"
+    ABORTED = "aborted"
 
 
 class Job(object):
@@ -75,6 +75,9 @@ class Cluster(object):
             return self.pods[name]
         return None
 
+    def get_pods(self) -> list[Pod]:
+        return list(self.pods.values())
+
     def remove_pod(self, name: str) -> Pod | None:
         if name in self.pods:
             return self.pods.pop(name)
@@ -93,6 +96,11 @@ def init():
     try:
         dc.images.pull("ubuntu")  # Assume all containers run on Ubuntu
         cluster.register_pod("default")
+        # Let's wipe all containers at startup
+        # TODO: do some filtering instead of wiping everything
+        for container in dc.containers.list(all=True):
+            dc.api.stop(container.id)
+            dc.api.remove_container(container.id)
         return jsonify(status=True, msg="setup completed")
 
     except docker.errors.APIError as e:
@@ -143,7 +151,6 @@ def pod() -> Response:
 @app.route("/cloud/node/", methods=["GET", "POST", "DELETE"])
 def node() -> Response:
     node_name = request.args.get("node_name")
-    assert node_name != None
     pod_name = request.args.get("pod_name")
 
     """monitoring: 2. cloud node ls [RES_POD_ID]"""
@@ -152,29 +159,30 @@ def node() -> Response:
             rtn = []
             for pod in cluster.pods.values():
                 for node in pod.nodes.values():
-                    rtn.append(jsonify(name=node.name, id=node.id, status=node.status))
+                    rtn.append(dict(name=node.name, id=node.id, status=node.status))
             return jsonify(status=True, data=rtn)
 
-        assert pod_name != None
-        if cluster.get_pod(pod_name) == None:
-            return jsonify(status=False, msg=f"cluster: pod {pod_name} does not exist")
-
         pod = cluster.get_pod(pod_name)
-        assert pod != None
+        if pod == None:
+            return jsonify(status=False, msg=f"cluster: pod {pod_name} does not exist")
 
         rtn = []
         for node in pod.nodes.values():
-            rtn.append(jsonify(name=node.name, id=node.id, status=node.status))
+            rtn.append(dict(name=node.name, id=node.id, status=node.status))
         return jsonify(status=True, data=rtn)
 
     """management: 4. cloud register NODE_NAME [POD_ID]"""
     if request.method == "POST":
+        if node_name == None:
+            return jsonify(status=False, msg=f"cluster: you must specify a node name")
+
         if pod_name == None:
             pod_name = "default"
-        if cluster.get_pod(pod_name) == None:
-            return jsonify(status=False, msg=f"cluster: pod {pod_name} does not exist")
+
         pod = cluster.get_pod(pod_name)
-        assert pod != None
+        if pod == None:
+            return jsonify(status=False, msg=f"cluster: pod {pod_name} does not exist")
+
         if pod.get_node(node_name) != None:
             return jsonify(
                 status=False,
@@ -198,29 +206,29 @@ def node() -> Response:
 
     """management: 5. cloud rm NODE_NAME"""
     if request.method == "DELETE":
-        if pod_name == None:
-            pod_name = "default"
-        if cluster.get_pod(pod_name) == None:
-            return jsonify(status=False, msg=f"cluster: pod {pod_name} does not exist")
-        pod = cluster.get_pod(pod_name)
-        assert pod != None
-        node = pod.get_node(node_name)
-        if node == None:
-            return jsonify(
-                status=False,
-                msg=f"cluster: node {node_name} does not exist in pod {pod_name}",
-            )
+        if node_name == None:
+            return jsonify(status=False, msg=f"cluster: you must specify a node name")
 
-        try:
-            dc.api.remove_container(container=node.id)
-            pod.remove_node(node.id)
-            return jsonify(
-                status=True,
-                msg=f"cluster: node {node_name} removed in pod {pod_name}",
-            )
-        except docker.errors.APIError as e:
-            print(e)
-            return jsonify(status=False, msg=f"cluster: docker.errors.APIError")
+        for pod in cluster.get_pods():
+            node = pod.get_node(node_name)
+            if node == None:
+                continue
+
+            try:
+                dc.api.remove_container(container=node.id)
+                pod.remove_node(node_name)
+                return jsonify(
+                    status=True,
+                    msg=f"cluster: node {node_name} removed in pod {pod_name}",
+                )
+            except docker.errors.APIError as e:
+                print(e)
+                return jsonify(status=False, msg=f"cluster: docker.errors.APIError")
+
+        return jsonify(
+            status=False,
+            msg=f"cluster: node {node_name} does not exist in this cluster",
+        )
 
     return jsonify(status=False, msg="cluster: what the hell is happenning")
 
