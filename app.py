@@ -3,6 +3,9 @@ from flask import Flask, jsonify, request, Response
 import docker
 import docker.errors
 import uuid
+import multiprocessing
+import atexit
+import time
 
 app = Flask(__name__)
 app.debug = True
@@ -19,9 +22,11 @@ class Status(str, Enum):
 
 
 class Job(object):
-    def __init__(self):
+    def __init__(self, name: str):
+        self.name: str = name
         self.id: uuid.UUID = uuid.uuid4()
-        self.status = Status.REGISTERED
+        self.status: Status = Status.REGISTERED
+        self.node: Node | None = None
 
 
 class Node(object):
@@ -63,8 +68,8 @@ class Cluster(object):
         # The inner dict has node_name as the key and node_id as the value
         self.pods: dict[str, Pod] = dict()
         self.pod_id: int = 0
+        self.jobs: list[Job] = list()
         self.queue: list[Job] = list()
-        self.job_id: int = 0
 
     def register_pod(self, name: str):
         self.pods[name] = Pod(name, self.pod_id)  # Init the "default" pod
@@ -237,10 +242,26 @@ def node() -> Response:
 def job() -> Response:
     """monitoring: 3. cloud job ls [NODE_ID]"""
     if request.method == "GET":
-        pass
+        node_id = request.args.get("node_id")
+        rtn = []
+        for job in cluster.jobs:
+            if node_id == None:
+                rtn.append(
+                    dict(
+                        name=job.name,
+                        id=job.id,
+                        node_id=job.node.id if job.node else None,
+                    )
+                )
+            else:
+                if job.node is not None and job.node.id == node_id:
+                    rtn.append(dict(name=job.name, id=job.id, node_id=job.node.id))
+
+        return jsonify(status=True, data=rtn)
 
     """management: 6. cloud launch PATH_TO_JOB"""
     if request.method == "POST":
+
         pass
 
     """management: 7. cloud abort JOB_ID"""
@@ -260,5 +281,34 @@ def log() -> Response:
     return jsonify(status=False, msg="cluster: what the hell is happenning")
 
 
+process = None
+
+
+def worker():
+    while True:
+        time.sleep(3)
+        if cluster.queue:
+            job = cluster.queue.pop()
+            print(job.id)
+        else:
+            print("waiting for jobs")
+
+
+def start_worker():
+    global process
+    process = multiprocessing.Process(target=worker)
+    process.start()
+
+
+def stop_worker():
+    global process
+    if process != None:
+        process.terminate()
+    else:
+        print("worker is not running")
+
+
 if __name__ == "__main__":
+    start_worker()
+    atexit.register(stop_worker)
     app.run(port=5551)
