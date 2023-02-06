@@ -2,6 +2,7 @@ from enum import Enum
 from flask import Flask, jsonify, request, Response
 import docker
 import docker.errors
+import uuid
 
 app = Flask(__name__)
 app.debug = True
@@ -18,8 +19,8 @@ class Status(Enum):
 
 
 class Job(object):
-    def __init__(self, id: int):
-        self.id: int = id
+    def __init__(self):
+        self.id: uuid.UUID = uuid.uuid4()
         self.status = Status.REGISTERED
 
 
@@ -28,10 +29,9 @@ class Node(object):
         self.name: str = name
         self.id: str = id
         self.status = Status.IDLE
-        self.job_id: int = 0
-        self.jobs: dict[int, Job] = dict()
+        self.jobs: dict[uuid.UUID, Job] = dict()
 
-    def get_job(self, id: int) -> Job | None:
+    def get_job(self, id: uuid.UUID) -> Job | None:
         if id in self.jobs:
             return self.jobs[id]
         return None
@@ -81,12 +81,15 @@ class Cluster(object):
         return None
 
 
-cluster: Cluster= Cluster()
+cluster: Cluster = Cluster()
 
 
 @app.route("/cloud/", methods=["POST"])
 def init():
     """management: 1. cloud init"""
+    if (cluster.get_pod("default")) != None:
+        return jsonify(status=False, msg="cluster: already initialied")
+
     try:
         dc.images.pull("ubuntu")  # Assume all containers run on Ubuntu
         cluster.register_pod("default")
@@ -100,17 +103,19 @@ def init():
 @app.route("/cloud/pod/", methods=["GET", "POST", "DELETE"])
 def pod() -> Response:
     pod_name = request.args.get("pod_name")
-    assert pod_name != None
 
     """monitoring: 1. cloud pod ls"""
     if request.method == "GET":
         rtn = []
         for pod in cluster.pods.values():
-            rtn.append(jsonify(name=pod.name, id=pod.id, nodes=len(pod.nodes)))
+            rtn.append(dict(name=pod.name, id=pod.id, nodes=len(pod.nodes)))
         return jsonify(status=True, data=rtn)
 
     """management: 2. cloud pod register POD_NAME"""
     if request.method == "POST":
+        if pod_name == None:
+            return jsonify(status=False, msg=f"cluster: you must specify a pod name")
+
         if cluster.get_pod(pod_name) != None:
             return jsonify(
                 status=False, msg=f"cluster: {pod_name} is already a pod in pods"
@@ -122,8 +127,11 @@ def pod() -> Response:
     """management: 3. cloud pod rm POD_NAME"""
     if request.method == "DELETE":
         # TODO: check for instances before removing
+        if pod_name == None:
+            return jsonify(status=False, msg=f"cluster: you must specify a pod name")
+
         rtn = cluster.remove_pod(pod_name)
-        if rtn == False:
+        if rtn == None:
             return jsonify(
                 status=False, msg=f"cluster: {pod_name} is not a pod in pods"
             )
@@ -245,4 +253,4 @@ def log() -> Response:
 
 
 if __name__ == "__main__":
-    app.run(port=5555)
+    app.run(port=5551)
