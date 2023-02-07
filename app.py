@@ -1,11 +1,8 @@
+from __future__ import annotations
 from enum import Enum
 from flask import Flask, jsonify, request, Response
 import docker
 import docker.errors
-import uuid
-import multiprocessing
-import atexit
-import time
 
 app = Flask(__name__)
 app.debug = True
@@ -19,14 +16,15 @@ class Status(str, Enum):
     REGISTERED = "registered"
     COMPLETED = "completed"
     ABORTED = "aborted"
+    FAILED = "failed"
 
 
 class Job(object):
-    def __init__(self, name: str):
+    def __init__(self, name: str, id: str, node: Node, status: Status = Status.RUNNING):
         self.name: str = name
-        self.id: uuid.UUID = uuid.uuid4()
-        self.status: Status = Status.REGISTERED
-        self.node: Node | None = None
+        self.id: str = id
+        self.node: Node = node
+        self.status: Status = status
 
 
 class Node(object):
@@ -34,12 +32,15 @@ class Node(object):
         self.name: str = name
         self.id: str = id
         self.status = Status.IDLE
-        self.jobs: dict[uuid.UUID, Job] = dict()
+        self.jobs: dict[str, Job] = dict()
 
-    def get_job(self, id: uuid.UUID) -> Job | None:
+    def get_job(self, id: str) -> Job | None:
         if id in self.jobs:
             return self.jobs[id]
         return None
+
+    def add_job(self, job: Job):
+        self.jobs[job.id] = job
 
 
 class Pod(object):
@@ -52,6 +53,9 @@ class Pod(object):
         if name in self.nodes:
             return self.nodes[name]
         return None
+
+    def get_nodes(self) -> list[Node]:
+        return list(self.nodes.values())
 
     def add_node(self, node: Node):
         assert node.name not in self.nodes
@@ -250,23 +254,70 @@ def job() -> Response:
                     dict(
                         name=job.name,
                         id=job.id,
-                        node_id=job.node.id if job.node else None,
+                        node_id=job.node.id,
+                        status=job.status,
                     )
                 )
             else:
-                if job.node is not None and job.node.id == node_id:
-                    rtn.append(dict(name=job.name, id=job.id, node_id=job.node.id))
+                if job.node.id == node_id:
+                    rtn.append(
+                        dict(
+                            name=job.name,
+                            id=job.id,
+                            node_id=job.node.id,
+                            status=job.status,
+                        )
+                    )
 
         return jsonify(status=True, data=rtn)
 
     """management: 6. cloud launch PATH_TO_JOB"""
     if request.method == "POST":
+        job_name = request.args.get("job_name")
+        if job_name == None:
+            return jsonify(status=False, msg="cluster: unknown job name")
+        job_id = request.args.get("job_id")
+        if job_id == None:
+            return jsonify(status=False, msg="cluster: unknown job id")
+        job_script = request.files.get("job_script")
+        if job_script == None:
+            return jsonify(status=False, msg="cluster: you need to attach a script")
 
-        pass
+        for pods in cluster.get_pods():
+            for node in pods.get_nodes():
+                if node.status == Status.IDLE:
+                    job = Job(
+                        name=job_name, id=job_id, node=node, status=Status.RUNNING
+                    )
+                    node.add_job(job)
+                    node.status = Status.RUNNING
+                    try:
+                        # TODO: execute the job here with async
+                        # TODO: figure out a way to store log
+                        print("trying")
+                    except docker.errors.APIError as e:
+                        print(e)
+                        job.status = Status.FAILED
+                        node.status = Status.IDLE
+                        return jsonify(
+                            status=False, msg=f"cluster: docker.errors.APIError"
+                        )
+
+        return jsonify(status=False, msg="cluster: unexpected failure on allocation")
 
     """management: 7. cloud abort JOB_ID"""
     if request.method == "DELETE":
-        pass
+        job_id = request.args.get("job_id")
+        if job_id == None:
+            return jsonify(status=False, msg="cluster: unknown job id")
+
+        for job in cluster.jobs:
+            if job.id == job_id:
+                job.status = Status.ABORTED
+                job.node.status = Status.IDLE
+                return jsonify(status=True, msg=f"cluster: job {job_id} aborted")
+
+        return jsonify(status=False, msg="cluster: job not found")
 
     return jsonify(status=False, msg="cluster: what the hell is happenning")
 
@@ -276,39 +327,23 @@ def log() -> Response:
     """monitoring: 4. cloud job log JOB_ID"""
     """monitoring: 5. cloud log node NODE_ID"""
     if request.method == "GET":
-        pass
+        job_id = request.args.get("job_id")
+        node_id = request.args.get("node_id")
+
+        if job_id == None and node_id == None:
+            return jsonify(
+                status=False, msg="cluster: you need to specify a node_id or a job_id"
+            )
+
+        if node_id:
+            # TODO: retrive the log here
+            pass
+
+        if job_id:
+            # TODO: retrive the log here
+            pass
 
     return jsonify(status=False, msg="cluster: what the hell is happenning")
 
-
-process = None
-
-
-def worker():
-    while True:
-        time.sleep(3)
-        if cluster.queue:
-            job = cluster.queue.pop()
-            print(job.id)
-        else:
-            print("waiting for jobs")
-
-
-def start_worker():
-    global process
-    process = multiprocessing.Process(target=worker)
-    process.start()
-
-
-def stop_worker():
-    global process
-    if process != None:
-        process.terminate()
-    else:
-        print("worker is not running")
-
-
 if __name__ == "__main__":
-    start_worker()
-    atexit.register(stop_worker)
     app.run(port=5551)
