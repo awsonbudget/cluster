@@ -73,7 +73,6 @@ class Cluster(object):
         self.pods: dict[str, Pod] = dict()
         self.pod_id: int = 0
         self.jobs: list[Job] = list()
-        self.queue: list[Job] = list()
 
     def register_pod(self, name: str):
         self.pods[name] = Pod(name, self.pod_id)  # Init the "default" pod
