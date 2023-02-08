@@ -3,6 +3,9 @@ from enum import Enum
 from flask import Flask, jsonify, request, Response
 import docker
 import docker.errors
+import tarfile
+from jobs import launch
+from typing import Optional
 
 app = Flask(__name__)
 app.debug = True
@@ -20,11 +23,19 @@ class Status(str, Enum):
 
 
 class Job(object):
-    def __init__(self, name: str, id: str, node: Node, status: Status = Status.RUNNING):
-        self.name: str = name
+    def __init__(self, id: str, name: str, node: Node, status: Status = Status.RUNNING):
         self.id: str = id
+        self.name: str = name
         self.node: Node = node
         self.status: Status = status
+
+    def toJSON(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "node": self.node.name,
+            "status": self.status,
+        }
 
 
 class Node(object):
@@ -39,8 +50,14 @@ class Node(object):
             return self.jobs[id]
         return None
 
+    def get_jobs(self) -> list[Job]:
+        return list(self.jobs.values())
+
     def add_job(self, job: Job):
         self.jobs[job.id] = job
+
+    def toJSON(self):
+        return {"name": self.name, "id": self.id, "status": self.status}
 
 
 class Pod(object):
@@ -72,7 +89,7 @@ class Cluster(object):
         # The inner dict has node_name as the key and node_id as the value
         self.pods: dict[str, Pod] = dict()
         self.pod_id: int = 0
-        self.jobs: list[Job] = list()
+        self.running: dict[str, Job] = dict()
 
     def register_pod(self, name: str):
         self.pods[name] = Pod(name, self.pod_id)  # Init the "default" pod
@@ -91,6 +108,23 @@ class Cluster(object):
             return self.pods.pop(name)
         return None
 
+    def add_running(self, job: Job):
+        self.running[job.id] = job
+
+    def get_jobs(self, node_name: Optional[str] = None) -> list[Job]:
+        for pod in self.get_pods():
+            if node_name != None:
+                node = pod.get_node(node_name)
+                if node == None:
+                    raise Exception(f"node {node_name} does not exist")
+                return node.get_jobs()
+            else:
+                rtn: list[Job] = []
+                for node in pod.get_nodes():
+                    rtn.extend(node.get_jobs())
+                return rtn
+        raise Exception("what the hell is happening")
+
 
 cluster: Cluster = Cluster()
 
@@ -99,7 +133,7 @@ cluster: Cluster = Cluster()
 def init():
     """management: 1. cloud init"""
     if (cluster.get_pod("default")) != None:
-        return jsonify(status=False, msg="cluster: already initialied")
+        return jsonify(status=True, msg="cluster: warning already initialied")
 
     try:
         dc.images.pull("ubuntu")  # Assume all containers run on Ubuntu
@@ -108,8 +142,8 @@ def init():
         # TODO: do some filtering instead of wiping everything
         for container in dc.containers.list(all=True):
             dc.api.stop(container.id)
-            dc.api.remove_container(container.id)
-        return jsonify(status=True, msg="setup completed")
+            dc.api.remove_container(container.id, force=True)
+        return jsonify(status=True, msg="cluster: setup completed")
 
     except docker.errors.APIError as e:
         print(e)
@@ -198,8 +232,12 @@ def node() -> Response:
             )
 
         try:
-            container = dc.containers.create(
-                image="ubuntu", name=f"{pod_name}_{node_name}"
+            container = dc.containers.run(
+                image="ubuntu",
+                name=f"{pod_name}_{node_name}",
+                command="tail -f /dev/null",
+                detach=True,
+                tty=True,
             )
             assert container.id != None
             node = Node(name=node_name, id=container.id)
@@ -246,32 +284,12 @@ def job() -> Response:
     """monitoring: 3. cloud job ls [NODE_ID]"""
     if request.method == "GET":
         node_id = request.args.get("node_id")
-        rtn = []
-        for job in cluster.jobs:
-            if node_id == None:
-                rtn.append(
-                    dict(
-                        name=job.name,
-                        id=job.id,
-                        node_id=job.node.id,
-                        status=job.status,
-                    )
-                )
-            else:
-                if job.node.id == node_id:
-                    rtn.append(
-                        dict(
-                            name=job.name,
-                            id=job.id,
-                            node_id=job.node.id,
-                            status=job.status,
-                        )
-                    )
-
-        return jsonify(status=True, data=rtn)
+        rtn = cluster.get_jobs(node_id)
+        return jsonify(status=True, data=[j.toJSON() for j in rtn])
 
     """management: 6. cloud launch PATH_TO_JOB"""
     if request.method == "POST":
+        # TODO: don't create job with duplicated id
         job_name = request.args.get("job_name")
         if job_name == None:
             return jsonify(status=False, msg="cluster: unknown job name")
@@ -289,11 +307,33 @@ def job() -> Response:
                         name=job_name, id=job_id, node=node, status=Status.RUNNING
                     )
                     node.add_job(job)
+                    print(node.jobs)
                     node.status = Status.RUNNING
+                    cluster.add_running(job)
                     try:
-                        # TODO: execute the job here with async
-                        # TODO: figure out a way to store log
-                        print("trying")
+                        launch.delay(job_id)
+
+                        return jsonify(
+                            status=True, msg=f"cluster: job {job_id} launched"
+                        )
+                    # # TODO: This is not right
+                    # with open("tmp/script.sh", "wb") as f:
+                    #     f.write(job_script.read())
+                    # with tarfile.open("tmp/script.tar", "w") as tar:
+                    #     tar.add("tmp/script.sh")
+                    # with open("tmp/script.tar", "rb") as tar:
+                    #     container = dc.containers.get(node.id)
+                    #     container.put_archive("/tmp/", tar)
+                    #     container.exec_run(
+                    #         ["/bin/bash", "-c", "chmod +x /tmp/script.sh"]
+                    #     )
+                    #     output = container.exec_run(
+                    #         ["/bin/bash", "-c", "/tmp/script.sh"]
+                    #     )
+                    #     if output.exit_code == 0:
+                    #         return jsonify(status=True)
+                    #     return jsonify(status=False)
+
                     except docker.errors.APIError as e:
                         print(e)
                         job.status = Status.FAILED
@@ -310,13 +350,13 @@ def job() -> Response:
         if job_id == None:
             return jsonify(status=False, msg="cluster: unknown job id")
 
-        for job in cluster.jobs:
-            if job.id == job_id:
-                job.status = Status.ABORTED
-                job.node.status = Status.IDLE
-                return jsonify(status=True, msg=f"cluster: job {job_id} aborted")
+        job = cluster.running.get(job_id, None)
+        if job == None:
+            return jsonify(status=False, msg="cluster: job not found")
 
-        return jsonify(status=False, msg="cluster: job not found")
+        job.status = Status.ABORTED
+        job.node.status = Status.IDLE
+        return jsonify(status=True, msg=f"cluster: job {job_id} aborted")
 
     return jsonify(status=False, msg="cluster: what the hell is happenning")
 
@@ -343,6 +383,23 @@ def log() -> Response:
             pass
 
     return jsonify(status=False, msg="cluster: what the hell is happenning")
+
+
+@app.route("/cloud/callback", methods=["POST"])
+def callback() -> Response:
+    job_id = request.args.get("job_id")
+    if job_id == None:
+        return jsonify(status=False, msg="cluster: unknown job id")
+
+    job = cluster.running.get(job_id, None)
+    if job == None:
+        return jsonify(status=False, msg="cluster: job not found")
+
+    job.status = Status.COMPLETED
+    job.node.status = Status.IDLE
+    cluster.running.pop(job_id)
+    return jsonify(status=True, msg=f"cluster: job {job_id} aborted")
+
 
 if __name__ == "__main__":
     app.run(port=5551)
