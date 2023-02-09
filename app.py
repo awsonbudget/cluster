@@ -2,6 +2,7 @@ from __future__ import annotations
 from enum import Enum
 import tarfile
 from flask import Flask, jsonify, request, Response
+from collections import OrderedDict
 import docker
 import docker.errors
 from jobs import launch
@@ -100,6 +101,8 @@ class Cluster(object):
         self.pods: dict[str, Pod] = dict()
         self.pod_id: int = 0
         self.running: dict[str, Job] = dict()
+        # the nodes are sorted from available to not available
+        self.nodes: OrderedDict[str, Node] = OrderedDict()
 
     def register_pod(self, name: str) -> bool:
         if name in self.pods:
@@ -265,6 +268,7 @@ def node() -> Response:
             assert container.id != None
             node = Node(name=node_name, id=container.id)
             status = pod.add_node(node)
+            cluster.nodes[node.id] = node
             if status:
                 return jsonify(
                     status=True,
@@ -298,7 +302,8 @@ def node() -> Response:
                         msg=f"cluster: node {node_name} is not IDLE",
                     )
 
-                dc.api.remove_container(container=node.id)
+                dc.api.remove_container(container=node.id, force=True)
+                cluster.nodes.pop(node.id)
                 return jsonify(
                     status=True,
                     msg=f"cluster: node {node_name} removed in pod {pod_name}",
@@ -335,45 +340,49 @@ def job() -> Response:
         job_script = request.files.get("job_script")
         if job_script == None:
             return jsonify(status=False, msg="cluster: you need to attach a script")
+        node_id = request.args.get("node_id")
+        if node_id == None:
+            return jsonify(
+                status=False, msg="cluster: you need to specify a node to run the job"
+            )
 
-        # TODO: For now it will just allocate at the first IDLE node, make this better
-        for pods in cluster.get_pods():
-            for node in pods.get_nodes():
-                if node.status == Status.IDLE:
-                    script_path = os.path.join("tmp", node.id)
-                    os.makedirs(script_path, exist_ok=True)
-                    with open(os.path.join(script_path, f"{job_id}.sh"), "wb") as f:
-                        f.write(job_script.read())
-                    with tarfile.open(
-                        os.path.join(script_path, f"{job_id}.tar"),
-                        "w",
-                    ) as tar:
-                        tar.add(os.path.join(script_path, f"{job_id}.sh"))
+        node = cluster.nodes.get(node_id, None)
+        if node == None:
+            return jsonify(
+                status=False,
+                msg=f"cluster: unexpected failure the chosen node {node_id} does not exist",
+            )
 
-                    job = Job(
-                        name=job_name, id=job_id, node=node, status=Status.RUNNING
-                    )
-                    status = node.add_job(job)
-                    if status == False:
-                        return jsonify(
-                            status=False, msg=f"cluster: job {job_name} already exist"
-                        )
-                    node.status = Status.RUNNING
-                    status = cluster.add_running(job)
-                    if status == False:
-                        return jsonify(
-                            status=False, msg=f"cluster: job {job_name} already exist"
-                        )
+        # Reorder move unavailable to the end
+        cluster.nodes.move_to_end(node_id, last=True)
 
-                    launch.delay(job_id, node.id)
-                    return jsonify(
-                        status=True,
-                        msg=f"cluster: job {job_id} launched on node {node.name}",
-                    )
+        if node.status != Status.IDLE:
+            return jsonify(
+                status=False,
+                msg="cluster: unexpected failure the chosen node is not IDLE",
+            )
+
+        script_path = os.path.join("tmp", node.id)
+        os.makedirs(script_path, exist_ok=True)
+        with open(os.path.join(script_path, f"{job_id}.sh"), "wb") as f:
+            f.write(job_script.read())
+        with tarfile.open(os.path.join(script_path, f"{job_id}.tar"), "w") as tar:
+            tar.add(os.path.join(script_path, f"{job_id}.sh"))
+
+        job = Job(name=job_name, id=job_id, node=node, status=Status.RUNNING)
+        status = node.add_job(job)
+        if status == False:
+            return jsonify(status=False, msg=f"cluster: job id {job_id} already exist")
+        status = cluster.add_running(job)
+        if status == False:
+            return jsonify(status=False, msg=f"cluster: job id {job_id} already exist")
+
+        node.status = Status.RUNNING
+        launch.delay(job_id, node.id)
 
         return jsonify(
-            status=False,
-            msg="cluster: unexpected failure on allocation no available node",
+            status=True,
+            msg=f"cluster: job {job_id} launched on node {node.name}",
         )
 
     """management: 7. cloud abort JOB_ID"""
@@ -429,7 +438,7 @@ def log() -> Response:
     return jsonify(status=False, msg="cluster: what the hell is happenning")
 
 
-@app.route("/callback", methods=["POST"])
+@app.route("/internal/callback", methods=["POST"])
 def callback() -> Response:
     job_id = request.args.get("job_id")
     node_id = request.args.get("node_id")
@@ -438,6 +447,8 @@ def callback() -> Response:
 
     if job_id == None:
         raise Exception("cluster: received an unknown job_id from callback")
+    if node_id == None:
+        raise Exception("cluster: received an unknown node_id from callback")
 
     job = cluster.remove_running(job_id)
     if job == None:
@@ -448,12 +459,24 @@ def callback() -> Response:
     job.status = Status.COMPLETED
     job.node.status = Status.IDLE
 
+    # move the available node to the beginning
+    cluster.nodes.move_to_end(node_id, last=False)
+
     with open(f"tmp/{node_id}/{job_id}.log", "w") as log:
         log.write(output if output else "")
 
     print(exit_code)
     print(output)
+
     return Response(status=204)
+
+
+@app.route("/internal/available", methods=["GET"])
+def available() -> Response:
+    first = next(iter(cluster.nodes.values()))
+    if first.status == Status.IDLE:
+        return jsonify(status=True, node_id=first.id)
+    return jsonify(status=False, node_id="")
 
 
 if __name__ == "__main__":

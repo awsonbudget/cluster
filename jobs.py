@@ -21,7 +21,7 @@ def launch(job_id, node_id):
         output = container.exec_run(["/bin/bash", "-c", f"{script}"])
         print(output)
         requests.post(
-            "http://localhost:5551/callback",
+            "http://localhost:5551/internal/callback",
             params={
                 "job_id": job_id,
                 "node_id": node_id,
