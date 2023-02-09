@@ -1,9 +1,9 @@
 from __future__ import annotations
 from enum import Enum
+import tarfile
 from flask import Flask, jsonify, request, Response
 import docker
 import docker.errors
-import tarfile
 from jobs import launch
 from typing import Optional
 
@@ -235,9 +235,9 @@ def node() -> Response:
             container = dc.containers.run(
                 image="ubuntu",
                 name=f"{pod_name}_{node_name}",
-                command="tail -f /dev/null",
+                command=["tail", "-f", "/dev/null"],
                 detach=True,
-                tty=True,
+                # tty=True,
             )
             assert container.id != None
             node = Node(name=node_name, id=container.id)
@@ -310,8 +310,13 @@ def job() -> Response:
                     print(node.jobs)
                     node.status = Status.RUNNING
                     cluster.add_running(job)
+                    print("strat trying")
+                    with open(f"tmp/{job_id}.sh", "wb") as f:
+                        f.write(job_script.read())
+                    with tarfile.open(f"tmp/{job_id}.tar", "w") as tar:
+                        tar.add(f"tmp/{job_id}.sh")
                     try:
-                        launch.delay(job_id)
+                        launch.delay(job_id, node.id)
 
                         return jsonify(
                             status=True, msg=f"cluster: job {job_id} launched"
@@ -385,9 +390,11 @@ def log() -> Response:
     return jsonify(status=False, msg="cluster: what the hell is happenning")
 
 
-@app.route("/cloud/callback", methods=["POST"])
+@app.route("/callback", methods=["POST"])
 def callback() -> Response:
     job_id = request.args.get("job_id")
+    exit_code = request.args.get("exit_code")
+    output = request.args.get("output")
     if job_id == None:
         return jsonify(status=False, msg="cluster: unknown job id")
 
@@ -398,6 +405,7 @@ def callback() -> Response:
     job.status = Status.COMPLETED
     job.node.status = Status.IDLE
     cluster.running.pop(job_id)
+    print(exit_code, output)
     return jsonify(status=True, msg=f"cluster: job {job_id} aborted")
 
 
