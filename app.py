@@ -6,6 +6,8 @@ import docker
 import docker.errors
 from jobs import launch
 from typing import Optional
+import shutil
+import os
 
 app = Flask(__name__)
 app.debug = True
@@ -29,7 +31,7 @@ class Job(object):
         self.node: Node = node
         self.status: Status = status
 
-    def toJSON(self):
+    def toJSON(self) -> dict:
         return {
             "id": self.id,
             "name": self.name,
@@ -53,10 +55,13 @@ class Node(object):
     def get_jobs(self) -> list[Job]:
         return list(self.jobs.values())
 
-    def add_job(self, job: Job):
+    def add_job(self, job: Job) -> bool:
+        if job.id in self.jobs:
+            return False
         self.jobs[job.id] = job
+        return True
 
-    def toJSON(self):
+    def toJSON(self) -> dict:
         return {"name": self.name, "id": self.id, "status": self.status}
 
 
@@ -74,13 +79,18 @@ class Pod(object):
     def get_nodes(self) -> list[Node]:
         return list(self.nodes.values())
 
-    def add_node(self, node: Node):
-        assert node.name not in self.nodes
+    def add_node(self, node: Node) -> bool:
+        if node.name in self.nodes:
+            return False
         self.nodes[node.name] = node
+        return True
 
     def remove_node(self, name: str) -> Node | None:
-        if self.get_node(name) != None:
-            return self.nodes.pop(name)
+        node = self.get_node(name)
+        if node == None or node.status != Status.IDLE:
+            return None
+        self.nodes.pop(name)
+        return node
 
 
 class Cluster(object):
@@ -91,9 +101,12 @@ class Cluster(object):
         self.pod_id: int = 0
         self.running: dict[str, Job] = dict()
 
-    def register_pod(self, name: str):
-        self.pods[name] = Pod(name, self.pod_id)  # Init the "default" pod
+    def register_pod(self, name: str) -> bool:
+        if name in self.pods:
+            return False
+        self.pods[name] = Pod(name, self.pod_id)
         self.pod_id += 1
+        return True
 
     def get_pod(self, name: str) -> Pod | None:
         if name in self.pods:
@@ -104,26 +117,30 @@ class Cluster(object):
         return list(self.pods.values())
 
     def remove_pod(self, name: str) -> Pod | None:
-        if name in self.pods:
-            return self.pods.pop(name)
-        return None
+        pod = self.get_pod(name)
+        if pod == None or len(pod.get_nodes()) != 0:
+            return None
+        return pod
 
-    def add_running(self, job: Job):
+    def add_running(self, job: Job) -> bool:
+        if job.id in self.running:
+            return False
         self.running[job.id] = job
+        return True
+
+    def remove_running(self, job_id: str) -> Job | None:
+        return self.running.pop(job_id, None)
 
     def get_jobs(self, node_name: Optional[str] = None) -> list[Job]:
+        rtn = []
         for pod in self.get_pods():
-            if node_name != None:
-                node = pod.get_node(node_name)
-                if node == None:
-                    raise Exception(f"node {node_name} does not exist")
-                return node.get_jobs()
-            else:
-                rtn: list[Job] = []
-                for node in pod.get_nodes():
+            for node in pod.get_nodes():
+                if node_name:
+                    if node.name == node_name:
+                        rtn.extend(node.get_jobs())
+                else:
                     rtn.extend(node.get_jobs())
-                return rtn
-        raise Exception("what the hell is happening")
+        return rtn
 
 
 cluster: Cluster = Cluster()
@@ -138,11 +155,15 @@ def init():
     try:
         dc.images.pull("ubuntu")  # Assume all containers run on Ubuntu
         cluster.register_pod("default")
-        # Let's wipe all containers at startup
         # TODO: do some filtering instead of wiping everything
         for container in dc.containers.list(all=True):
             dc.api.stop(container.id)
             dc.api.remove_container(container.id, force=True)
+        try:
+            shutil.rmtree("tmp")
+        except OSError as e:
+            print("tmp was already cleaned")
+
         return jsonify(status=True, msg="cluster: setup completed")
 
     except docker.errors.APIError as e:
@@ -157,8 +178,8 @@ def pod() -> Response:
     """monitoring: 1. cloud pod ls"""
     if request.method == "GET":
         rtn = []
-        for pod in cluster.pods.values():
-            rtn.append(dict(name=pod.name, id=pod.id, nodes=len(pod.nodes)))
+        for pod in cluster.get_pods():
+            rtn.append(dict(name=pod.name, id=pod.id, nodes=len(pod.get_nodes())))
         return jsonify(status=True, data=rtn)
 
     """management: 2. cloud pod register POD_NAME"""
@@ -166,26 +187,29 @@ def pod() -> Response:
         if pod_name == None:
             return jsonify(status=False, msg=f"cluster: you must specify a pod name")
 
-        if cluster.get_pod(pod_name) != None:
-            return jsonify(
-                status=False, msg=f"cluster: {pod_name} is already a pod in pods"
-            )
-
-        cluster.register_pod(pod_name)
-        return jsonify(status=True, msg=f"cluster: {pod_name} is added as a pod")
+        status = cluster.register_pod(pod_name)
+        if status == True:
+            return jsonify(status=True, msg=f"cluster: {pod_name} is added as a pod")
+        else:
+            return jsonify(status=False, msg=f"cluster: pod {pod_name} already exists")
 
     """management: 3. cloud pod rm POD_NAME"""
     if request.method == "DELETE":
-        # TODO: check for instances before removing
         if pod_name == None:
             return jsonify(status=False, msg=f"cluster: you must specify a pod name")
-
-        rtn = cluster.remove_pod(pod_name)
-        if rtn == None:
+        if pod_name == "default":
             return jsonify(
-                status=False, msg=f"cluster: {pod_name} is not a pod in pods"
+                status=False, msg=f"cluster: you cannot remove the default pod"
             )
-        return jsonify(status=True, msg=f"cluster: {pod_name} is removed from pods")
+
+        pod = cluster.remove_pod(pod_name)
+        if pod:
+            return jsonify(status=True, msg=f"cluster: {pod_name} is removed from pods")
+        else:
+            return jsonify(
+                status=False,
+                msg=f"cluster: failed to remove pod {pod_name} because it does not exist or it has nodes inside",
+            )
 
     return jsonify(status=False, msg="cluster: what the hell is happenning")
 
@@ -199,8 +223,8 @@ def node() -> Response:
     if request.method == "GET":
         if pod_name == None:
             rtn = []
-            for pod in cluster.pods.values():
-                for node in pod.nodes.values():
+            for pod in cluster.get_pods():
+                for node in pod.get_nodes():
                     rtn.append(dict(name=node.name, id=node.id, status=node.status))
             return jsonify(status=True, data=rtn)
 
@@ -209,7 +233,7 @@ def node() -> Response:
             return jsonify(status=False, msg=f"cluster: pod {pod_name} does not exist")
 
         rtn = []
-        for node in pod.nodes.values():
+        for node in pod.get_nodes():
             rtn.append(dict(name=node.name, id=node.id, status=node.status))
         return jsonify(status=True, data=rtn)
 
@@ -235,17 +259,23 @@ def node() -> Response:
             container = dc.containers.run(
                 image="ubuntu",
                 name=f"{pod_name}_{node_name}",
-                command=["tail", "-f", "/dev/null"],
+                command=["tail", "-f", "/dev/null"],  # keep it running
                 detach=True,
-                # tty=True,
             )
             assert container.id != None
             node = Node(name=node_name, id=container.id)
-            pod.add_node(node)
-            return jsonify(
-                status=True,
-                msg=f"cluster: node {node_name} created in pod {pod_name}",
-            )
+            status = pod.add_node(node)
+            if status:
+                return jsonify(
+                    status=True,
+                    msg=f"cluster: node {node_name} created in pod {pod_name}",
+                )
+            else:
+                return jsonify(
+                    status=False,
+                    msg=f"cluster: node {node_name} already exist in pod {pod_name}",
+                )
+
         except docker.errors.APIError as e:
             print(e)
             return jsonify(status=False, msg=f"cluster: docker.errors.APIError")
@@ -261,8 +291,14 @@ def node() -> Response:
                 continue
 
             try:
+                node = pod.remove_node(node_name)
+                if node == None:
+                    return jsonify(
+                        status=False,
+                        msg=f"cluster: node {node_name} is not IDLE",
+                    )
+
                 dc.api.remove_container(container=node.id)
-                pod.remove_node(node_name)
                 return jsonify(
                     status=True,
                     msg=f"cluster: node {node_name} removed in pod {pod_name}",
@@ -289,7 +325,7 @@ def job() -> Response:
 
     """management: 6. cloud launch PATH_TO_JOB"""
     if request.method == "POST":
-        # TODO: don't create job with duplicated id
+        # IMPORTANT: we assume the manager won't create jobs with the same ID!
         job_name = request.args.get("job_name")
         if job_name == None:
             return jsonify(status=False, msg="cluster: unknown job name")
@@ -300,54 +336,45 @@ def job() -> Response:
         if job_script == None:
             return jsonify(status=False, msg="cluster: you need to attach a script")
 
+        # TODO: For now it will just allocate at the first IDLE node, make this better
         for pods in cluster.get_pods():
             for node in pods.get_nodes():
                 if node.status == Status.IDLE:
+                    script_path = os.path.join("tmp", node.id)
+                    os.makedirs(script_path, exist_ok=True)
+                    with open(os.path.join(script_path, f"{job_id}.sh"), "wb") as f:
+                        f.write(job_script.read())
+                    with tarfile.open(
+                        os.path.join(script_path, f"{job_id}.tar"),
+                        "w",
+                    ) as tar:
+                        tar.add(os.path.join(script_path, f"{job_id}.sh"))
+
                     job = Job(
                         name=job_name, id=job_id, node=node, status=Status.RUNNING
                     )
-                    node.add_job(job)
-                    print(node.jobs)
+                    status = node.add_job(job)
+                    if status == False:
+                        return jsonify(
+                            status=False, msg=f"cluster: job {job_name} already exist"
+                        )
                     node.status = Status.RUNNING
-                    cluster.add_running(job)
-                    print("strat trying")
-                    with open(f"tmp/{job_id}.sh", "wb") as f:
-                        f.write(job_script.read())
-                    with tarfile.open(f"tmp/{job_id}.tar", "w") as tar:
-                        tar.add(f"tmp/{job_id}.sh")
-                    try:
-                        launch.delay(job_id, node.id)
-
+                    status = cluster.add_running(job)
+                    if status == False:
                         return jsonify(
-                            status=True, msg=f"cluster: job {job_id} launched"
-                        )
-                    # # TODO: This is not right
-                    # with open("tmp/script.sh", "wb") as f:
-                    #     f.write(job_script.read())
-                    # with tarfile.open("tmp/script.tar", "w") as tar:
-                    #     tar.add("tmp/script.sh")
-                    # with open("tmp/script.tar", "rb") as tar:
-                    #     container = dc.containers.get(node.id)
-                    #     container.put_archive("/tmp/", tar)
-                    #     container.exec_run(
-                    #         ["/bin/bash", "-c", "chmod +x /tmp/script.sh"]
-                    #     )
-                    #     output = container.exec_run(
-                    #         ["/bin/bash", "-c", "/tmp/script.sh"]
-                    #     )
-                    #     if output.exit_code == 0:
-                    #         return jsonify(status=True)
-                    #     return jsonify(status=False)
-
-                    except docker.errors.APIError as e:
-                        print(e)
-                        job.status = Status.FAILED
-                        node.status = Status.IDLE
-                        return jsonify(
-                            status=False, msg=f"cluster: docker.errors.APIError"
+                            status=False, msg=f"cluster: job {job_name} already exist"
                         )
 
-        return jsonify(status=False, msg="cluster: unexpected failure on allocation")
+                    launch.delay(job_id, node.id)
+                    return jsonify(
+                        status=True,
+                        msg=f"cluster: job {job_id} launched on node {node.name}",
+                    )
+
+        return jsonify(
+            status=False,
+            msg="cluster: unexpected failure on allocation no available node",
+        )
 
     """management: 7. cloud abort JOB_ID"""
     if request.method == "DELETE":
@@ -355,9 +382,11 @@ def job() -> Response:
         if job_id == None:
             return jsonify(status=False, msg="cluster: unknown job id")
 
-        job = cluster.running.get(job_id, None)
+        job = cluster.remove_running(job_id)
         if job == None:
-            return jsonify(status=False, msg="cluster: job not found")
+            return jsonify(
+                status=False, msg="cluster: job not found in the running list"
+            )
 
         job.status = Status.ABORTED
         job.node.status = Status.IDLE
@@ -379,13 +408,23 @@ def log() -> Response:
                 status=False, msg="cluster: you need to specify a node_id or a job_id"
             )
 
-        if node_id:
-            # TODO: retrive the log here
-            pass
-
         if job_id:
-            # TODO: retrive the log here
-            pass
+            rtn = dict()
+            for root, _, files in os.walk("tmp/"):
+                for file in files:
+                    if file == job_id + ".log":
+                        with open(os.path.join(root, file), "r") as f:
+                            rtn[job_id] = f.read()
+            return jsonify(status=False, data=rtn)
+
+        if node_id:
+            rtn = dict()
+            for root, _, files in os.walk("tmp/" + node_id):
+                for file in files:
+                    if file.endswith(".log"):
+                        with open(os.path.join(root, file), "r") as f:
+                            rtn[job_id] = f.read()
+            return jsonify(status=False, data=rtn)
 
     return jsonify(status=False, msg="cluster: what the hell is happenning")
 
@@ -393,20 +432,28 @@ def log() -> Response:
 @app.route("/callback", methods=["POST"])
 def callback() -> Response:
     job_id = request.args.get("job_id")
+    node_id = request.args.get("node_id")
     exit_code = request.args.get("exit_code")
     output = request.args.get("output")
-    if job_id == None:
-        return jsonify(status=False, msg="cluster: unknown job id")
 
-    job = cluster.running.get(job_id, None)
+    if job_id == None:
+        raise Exception("cluster: received an unknown job_id from callback")
+
+    job = cluster.remove_running(job_id)
     if job == None:
-        return jsonify(status=False, msg="cluster: job not found")
+        raise Exception(
+            f"cluster: job {job_id} received from callback is not in the running list"
+        )
 
     job.status = Status.COMPLETED
     job.node.status = Status.IDLE
-    cluster.running.pop(job_id)
-    print(exit_code, output)
-    return jsonify(status=True, msg=f"cluster: job {job_id} aborted")
+
+    with open(f"tmp/{node_id}/{job_id}.log", "w") as log:
+        log.write(output if output else "")
+
+    print(exit_code)
+    print(output)
+    return Response(status=204)
 
 
 if __name__ == "__main__":

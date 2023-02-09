@@ -2,7 +2,7 @@ from celery import Celery
 import requests
 import docker
 import docker.errors
-
+import os
 
 app = Celery("jobs", broker="amqp://localhost")
 
@@ -11,21 +11,20 @@ dc = docker.from_env()
 
 @app.task
 def launch(job_id, node_id):
-    with open(f"tmp/{job_id}.tar", "rb") as tar:
+    folder = os.path.join("tmp", node_id)
+    with open(os.path.join(folder, f"{job_id}.tar"), "rb") as tar:
         container = dc.containers.get(node_id)
         container.put_archive("/", tar)
-        # output = container.exec_run(["/bin/bash", "-c", "ls"])
-        # print(output)
-        # output = container.exec_run(["/bin/bash", "-c", "cd /tmp && ls"])
-        # print(output)
-        output = container.exec_run(["/bin/bash", "-c", f"chmod +x /tmp/{job_id}.sh"])
+        script = os.path.join(folder, f"{job_id}.sh")
+        output = container.exec_run(["/bin/bash", "-c", f"chmod +x {script}"])
         print(output)
-        output = container.exec_run(["/bin/bash", "-c", f"/tmp/{job_id}.sh"])
+        output = container.exec_run(["/bin/bash", "-c", f"{script}"])
         print(output)
         requests.post(
             "http://localhost:5551/callback",
             params={
                 "job_id": job_id,
+                "node_id": node_id,
                 "exit_code": output.exit_code,
                 "output": output.output.strip().decode("utf-8"),
             },
