@@ -17,5 +17,5 @@ On MacOS, you can use `brew install rabbitmq` and `brew service start rabbitmq`
 
 In order to run the cluster, you need 2 commands:
 
-- To start the Flask server: `python3 app.py`
+- To start the FastAPI server: `uvicorn main:app --reload --port 5551`
 - To start the Celery worker: `celery -A jobs worker --loglevel=INFO`
