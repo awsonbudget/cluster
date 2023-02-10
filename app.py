@@ -90,8 +90,7 @@ class Pod(object):
         node = self.get_node(name)
         if node == None or node.status != Status.IDLE:
             return None
-        self.nodes.pop(name)
-        return node
+        return self.nodes.pop(name)
 
 
 class Cluster(object):
@@ -123,7 +122,7 @@ class Cluster(object):
         pod = self.get_pod(name)
         if pod == None or len(pod.get_nodes()) != 0:
             return None
-        return pod
+        return self.pods.pop(name)
 
     def add_running(self, job: Job) -> bool:
         if job.id in self.running:
@@ -176,6 +175,9 @@ def init():
 
 @app.route("/cloud/pod/", methods=["GET", "POST", "DELETE"])
 def pod() -> Response:
+    if (cluster.get_pod("default")) == None:
+        return jsonify(status=False, msg="cluster: please initialize first")
+
     pod_name = request.args.get("pod_name")
 
     """monitoring: 1. cloud pod ls"""
@@ -219,6 +221,9 @@ def pod() -> Response:
 
 @app.route("/cloud/node/", methods=["GET", "POST", "DELETE"])
 def node() -> Response:
+    if (cluster.get_pod("default")) == None:
+        return jsonify(status=False, msg="cluster: please initialize first")
+
     node_name = request.args.get("node_name")
     pod_name = request.args.get("pod_name")
 
@@ -228,7 +233,7 @@ def node() -> Response:
             rtn = []
             for pod in cluster.get_pods():
                 for node in pod.get_nodes():
-                    rtn.append(dict(name=node.name, id=node.id, status=node.status))
+                    rtn.append(dict(name=node.name, id=node.id, status=node.status, pod=pod))
             return jsonify(status=True, data=rtn)
 
         pod = cluster.get_pod(pod_name)
@@ -237,7 +242,7 @@ def node() -> Response:
 
         rtn = []
         for node in pod.get_nodes():
-            rtn.append(dict(name=node.name, id=node.id, status=node.status))
+            rtn.append(dict(name=node.name, id=node.id, status=node.status, pod =pod))
         return jsonify(status=True, data=rtn)
 
     """management: 4. cloud register NODE_NAME [POD_ID]"""
@@ -324,6 +329,9 @@ def node() -> Response:
 
 @app.route("/cloud/job/", methods=["GET", "POST", "DELETE"])
 def job() -> Response:
+    if (cluster.get_pod("default")) == None:
+        return jsonify(status=False, msg="cluster: please initialize first")
+
     """monitoring: 3. cloud job ls [NODE_ID]"""
     if request.method == "GET":
         node_id = request.args.get("node_id")
@@ -332,6 +340,7 @@ def job() -> Response:
 
     """management: 6. cloud launch PATH_TO_JOB"""
     if request.method == "POST":
+        # TODO: debug why the first request to this can randomly get stuck
         # IMPORTANT: we assume the manager won't create jobs with the same ID!
         job_name = request.args.get("job_name")
         if job_name == None:
@@ -381,6 +390,7 @@ def job() -> Response:
 
     """management: 7. cloud abort JOB_ID"""
     if request.method == "DELETE":
+        # TODO: abort in Celery as well
         job_id = request.args.get("job_id")
         if job_id == None:
             return jsonify(status=False, msg="cluster: unknown job id")
@@ -401,6 +411,9 @@ def job() -> Response:
 
 @app.route("/cloud/log/", methods=["GET"])
 def log() -> Response:
+    if (cluster.get_pod("default")) == None:
+        return jsonify(status=False, msg="cluster: please initialize first")
+
     """monitoring: 4. cloud job log JOB_ID"""
     """monitoring: 5. cloud log node NODE_ID"""
     if request.method == "GET":
@@ -435,6 +448,9 @@ def log() -> Response:
 
 @app.route("/internal/callback", methods=["POST"])
 def callback() -> Response:
+    if (cluster.get_pod("default")) == None:
+        return jsonify(status=False, msg="cluster: please initialize first")
+
     job_id = request.args.get("job_id")
     node_id = request.args.get("node_id")
     exit_code = request.args.get("exit_code")
@@ -467,6 +483,9 @@ def callback() -> Response:
 
 @app.route("/internal/available", methods=["GET"])
 def available() -> Response:
+    if (cluster.get_pod("default")) == None:
+        return jsonify(status=False, msg="cluster: please initialize first")
+
     first = next(iter(cluster.nodes.values()))
     if first.status == Status.IDLE:
         return jsonify(status=True, node_id=first.id)
