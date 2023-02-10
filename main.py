@@ -8,8 +8,9 @@ from typing import Optional
 import shutil
 import os
 from collections import deque
-from fastapi import FastAPI, UploadFile
+from fastapi import FastAPI, UploadFile, Request, HTTPException, Depends
 from pydantic import BaseModel
+import time
 
 app = FastAPI()
 
@@ -157,6 +158,20 @@ class Resp(BaseModel):
 cluster: Cluster = Cluster()
 
 
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    return response
+
+
+async def verify_setup():
+    if cluster.get_pod("default") == None:
+        raise HTTPException(status_code=400, detail="cluster: please initialize first")
+
+
 @app.post("/cloud/")
 async def init() -> Resp:
     """management: 1. cloud init"""
@@ -184,24 +199,18 @@ async def init() -> Resp:
         return Resp(status=False, msg="cluster: docker.errors.APIError")
 
 
-@app.get("/cloud/pod/")
+@app.get("/cloud/pod/", dependencies=[Depends(verify_setup)])
 async def pod_ls():
     """monitoring: 1. cloud pod ls"""
-    if (cluster.get_pod("default")) == None:
-        return Resp(status=False, msg="cluster: please initialize first")
-
     rtn = []
     for pod in cluster.get_pods():
         rtn.append(dict(name=pod.name, id=pod.id, nodes=len(pod.get_nodes())))
     return Resp(status=True, data=rtn)
 
 
-@app.post("/cloud/pod/")
+@app.post("/cloud/pod/", dependencies=[Depends(verify_setup)])
 async def pod_register(pod_name: str):
     """management: 2. cloud pod register POD_NAME"""
-    if (cluster.get_pod("default")) == None:
-        return Resp(status=False, msg="cluster: please initialize first")
-
     status = cluster.register_pod(pod_name)
     if status == True:
         return Resp(status=True, msg=f"cluster: {pod_name} is added as a pod")
@@ -209,12 +218,9 @@ async def pod_register(pod_name: str):
         return Resp(status=False, msg=f"cluster: pod {pod_name} already exists")
 
 
-@app.delete("/cloud/pod/")
+@app.delete("/cloud/pod/", dependencies=[Depends(verify_setup)])
 async def pod_rm(pod_name: str):
     """management: 3. cloud pod rm POD_NAME"""
-    if (cluster.get_pod("default")) == None:
-        return Resp(status=False, msg="cluster: please initialize first")
-
     if pod_name == "default":
         return Resp(status=False, msg=f"cluster: you cannot remove the default pod")
 
@@ -228,12 +234,9 @@ async def pod_rm(pod_name: str):
         )
 
 
-@app.get("/cloud/node/")
+@app.get("/cloud/node/", dependencies=[Depends(verify_setup)])
 async def node_ls(pod_name: str | None = None) -> Resp:
     """monitoring: 2. cloud node ls [RES_POD_ID]"""
-    if (cluster.get_pod("default")) == None:
-        return Resp(status=False, msg="cluster: please initialize first")
-
     if pod_name == None:
         rtn = []
         for pod in cluster.get_pods():
@@ -260,12 +263,9 @@ async def node_ls(pod_name: str | None = None) -> Resp:
     return Resp(status=True, data=rtn)
 
 
-@app.post("/cloud/node/")
+@app.post("/cloud/node/", dependencies=[Depends(verify_setup)])
 async def node_register(node_name: str, pod_name: str | None = None) -> Resp:
     """management: 4. cloud register NODE_NAME [POD_ID]"""
-    if (cluster.get_pod("default")) == None:
-        return Resp(status=False, msg="cluster: please initialize first")
-
     if pod_name == None:
         pod_name = "default"
 
@@ -307,12 +307,9 @@ async def node_register(node_name: str, pod_name: str | None = None) -> Resp:
         return Resp(status=False, msg=f"cluster: docker.errors.APIError")
 
 
-@app.delete("/cloud/node/")
+@app.delete("/cloud/node/", dependencies=[Depends(verify_setup)])
 async def node_rm(node_name: str) -> Resp:
     """management: 5. cloud rm NODE_NAME"""
-    if (cluster.get_pod("default")) == None:
-        return Resp(status=False, msg="cluster: please initialize first")
-
     for pod in cluster.get_pods():
         node = pod.get_node(node_name)
         if node == None:
@@ -343,24 +340,17 @@ async def node_rm(node_name: str) -> Resp:
     )
 
 
-@app.get("/cloud/job/")
+@app.get("/cloud/job/", dependencies=[Depends(verify_setup)])
 async def job_ls(node_id: str | None = None) -> Resp:
     """monitoring: 3. cloud job ls [NODE_ID]"""
-    if (cluster.get_pod("default")) == None:
-        return Resp(status=False, msg="cluster: please initialize first")
     rtn = cluster.get_jobs(node_id)
     return Resp(status=True, data=[j.toJSON() for j in rtn])
 
 
-@app.post("/cloud/job/")
+@app.post("/cloud/job/", dependencies=[Depends(verify_setup)])
 async def job_launch(job_name: str, job_id: str, job_script: UploadFile) -> Resp:
     """management: 6. cloud launch PATH_TO_JOB"""
-    if (cluster.get_pod("default")) == None:
-        return Resp(status=False, msg="cluster: please initialize first")
-
-    # TODO: debug why the first request to this can randomly get stuck
     # IMPORTANT: we assume the manager won't create jobs with the same ID!
-
     if len(cluster.available) == 0:
         return Resp(
             status=False,
@@ -398,12 +388,9 @@ async def job_launch(job_name: str, job_id: str, job_script: UploadFile) -> Resp
     )
 
 
-@app.delete("/cloud/job/")
+@app.delete("/cloud/job/", dependencies=[Depends(verify_setup)])
 async def job_abort(job_id: str) -> Resp:
     """management: 7. cloud abort JOB_ID"""
-    if (cluster.get_pod("default")) == None:
-        return Resp(status=False, msg="cluster: please initialize first")
-
     # TODO: abort in Celery as well
     job = cluster.remove_running(job_id)
     if job == None:
@@ -415,11 +402,9 @@ async def job_abort(job_id: str) -> Resp:
     return Resp(status=True, msg=f"cluster: job {job_id} aborted")
 
 
-@app.get("/cloud/job/log/")
+@app.get("/cloud/job/log/", dependencies=[Depends(verify_setup)])
 async def job_log(job_id: str) -> Resp:
     """monitoring: 4. cloud job log JOB_ID"""
-    if (cluster.get_pod("default")) == None:
-        return Resp(status=False, msg="cluster: please initialize first")
     rtn = dict()
     for root, _, files in os.walk("tmp/"):
         for file in files:
@@ -429,11 +414,9 @@ async def job_log(job_id: str) -> Resp:
     return Resp(status=False, data=rtn)
 
 
-@app.get("/cloud/node/log/")
+@app.get("/cloud/node/log/", dependencies=[Depends(verify_setup)])
 async def node_log(node_id: str) -> Resp:
     """monitoring: 5. cloud log node NODE_ID"""
-    if (cluster.get_pod("default")) == None:
-        return Resp(status=False, msg="cluster: please initialize first")
     rtn = dict()
     for root, _, files in os.walk("tmp/" + node_id):
         for file in files:
@@ -443,12 +426,9 @@ async def node_log(node_id: str) -> Resp:
     return Resp(status=False, data=rtn)
 
 
-@app.post("/internal/callback")
+@app.post("/internal/callback", dependencies=[Depends(verify_setup)])
 async def callback(job_id: str, node_id: str, exit_code: str, output: str) -> Resp:
     # TODO: Handle None output
-    if (cluster.get_pod("default")) == None:
-        return Resp(status=False, msg="cluster: please initialize first")
-
     job = cluster.remove_running(job_id)
     if job == None:
         raise Exception(
@@ -469,11 +449,8 @@ async def callback(job_id: str, node_id: str, exit_code: str, output: str) -> Re
     return Resp(status=True)
 
 
-@app.get("/internal/available")
+@app.get("/internal/available", dependencies=[Depends(verify_setup)])
 async def available() -> Resp:
-    if (cluster.get_pod("default")) == None:
-        return Resp(status=False, msg="cluster: please initialize first")
-
     first = cluster.available[0]
     if first and first.status == Status.IDLE:
         return Resp(status=True, data={"node_id": first.id})
