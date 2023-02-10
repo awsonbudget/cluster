@@ -92,6 +92,9 @@ class Pod(object):
             return None
         return self.nodes.pop(name)
 
+    def toJSON(self) -> dict:
+        return {"name": self.name, "id": self.id}
+
 
 class Cluster(object):
     def __init__(self):
@@ -233,7 +236,14 @@ def node() -> Response:
             rtn = []
             for pod in cluster.get_pods():
                 for node in pod.get_nodes():
-                    rtn.append(dict(name=node.name, id=node.id, status=node.status, pod=pod))
+                    rtn.append(
+                        dict(
+                            name=node.name,
+                            id=node.id,
+                            status=node.status,
+                            pod=pod.toJSON(),
+                        )
+                    )
             return jsonify(status=True, data=rtn)
 
         pod = cluster.get_pod(pod_name)
@@ -242,7 +252,9 @@ def node() -> Response:
 
         rtn = []
         for node in pod.get_nodes():
-            rtn.append(dict(name=node.name, id=node.id, status=node.status, pod =pod))
+            rtn.append(
+                dict(name=node.name, id=node.id, status=node.status, pod=pod.toJSON())
+            )
         return jsonify(status=True, data=rtn)
 
     """management: 4. cloud register NODE_NAME [POD_ID]"""
@@ -351,7 +363,6 @@ def job() -> Response:
         job_script = request.files.get("job_script")
         if job_script == None:
             return jsonify(status=False, msg="cluster: you need to attach a script")
-        node_id = request.args.get("node_id")
 
         if len(cluster.available) == 0:
             return jsonify(
