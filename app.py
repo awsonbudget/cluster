@@ -2,13 +2,13 @@ from __future__ import annotations
 from enum import Enum
 import tarfile
 from flask import Flask, jsonify, request, Response
-from collections import OrderedDict
 import docker
 import docker.errors
 from jobs import launch
 from typing import Optional
 import shutil
 import os
+from collections import deque
 
 app = Flask(__name__)
 app.debug = True
@@ -101,8 +101,8 @@ class Cluster(object):
         self.pods: dict[str, Pod] = dict()
         self.pod_id: int = 0
         self.running: dict[str, Job] = dict()
-        # the nodes are sorted from available to not available
-        self.nodes: OrderedDict[str, Node] = OrderedDict()
+        self.nodes: dict[str, Node] = dict()
+        self.available: deque[Node] = deque()
 
     def register_pod(self, name: str) -> bool:
         if name in self.pods:
@@ -269,6 +269,7 @@ def node() -> Response:
             node = Node(name=node_name, id=container.id)
             status = pod.add_node(node)
             cluster.nodes[node.id] = node
+            cluster.available.append(node)
             if status:
                 return jsonify(
                     status=True,
@@ -304,6 +305,7 @@ def node() -> Response:
 
                 dc.api.remove_container(container=node.id, force=True)
                 cluster.nodes.pop(node.id)
+                cluster.available.remove(node)
                 return jsonify(
                     status=True,
                     msg=f"cluster: node {node_name} removed in pod {pod_name}",
@@ -341,25 +343,17 @@ def job() -> Response:
         if job_script == None:
             return jsonify(status=False, msg="cluster: you need to attach a script")
         node_id = request.args.get("node_id")
-        if node_id == None:
-            return jsonify(
-                status=False, msg="cluster: you need to specify a node to run the job"
-            )
 
-        node = cluster.nodes.get(node_id, None)
-        if node == None:
+        if len(cluster.available) == 0:
             return jsonify(
                 status=False,
-                msg=f"cluster: unexpected failure the chosen node {node_id} does not exist",
+                msg=f"cluster: unexpected failure there is no available node",
             )
-
-        # Reorder move unavailable to the end
-        cluster.nodes.move_to_end(node_id, last=True)
-
+        node = cluster.available.popleft()
         if node.status != Status.IDLE:
             return jsonify(
                 status=False,
-                msg="cluster: unexpected failure the chosen node is not IDLE",
+                msg="cluster: unexpected failure the node is not IDLE",
             )
 
         script_path = os.path.join("tmp", node.id)
@@ -399,6 +393,7 @@ def job() -> Response:
 
         job.status = Status.ABORTED
         job.node.status = Status.IDLE
+        cluster.available.append(job.node)
         return jsonify(status=True, msg=f"cluster: job {job_id} aborted")
 
     return jsonify(status=False, msg="cluster: what the hell is happenning")
@@ -459,8 +454,7 @@ def callback() -> Response:
     job.status = Status.COMPLETED
     job.node.status = Status.IDLE
 
-    # move the available node to the beginning
-    cluster.nodes.move_to_end(node_id, last=False)
+    cluster.available.append(job.node)
 
     with open(f"tmp/{node_id}/{job_id}.log", "w") as log:
         log.write(output if output else "")
