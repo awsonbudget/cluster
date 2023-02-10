@@ -11,6 +11,7 @@ from collections import deque
 from fastapi import FastAPI, UploadFile, Request, HTTPException, Depends
 from pydantic import BaseModel
 import time
+import requests
 
 app = FastAPI()
 
@@ -176,7 +177,7 @@ async def verify_setup():
 async def init() -> Resp:
     """management: 1. cloud init"""
     if (cluster.get_pod("default")) != None:
-        return Resp(status=True, msg="cluster: warning already initialied")
+        return Resp(status=True, msg="cluster: warning already initialized")
 
     try:
         dc.images.pull("ubuntu")  # Assume all containers run on Ubuntu
@@ -446,12 +447,13 @@ async def callback(job_id: str, node_id: str, exit_code: str, output: str) -> Re
     print(exit_code)
     print(output)
 
+    requests.post("http://localhost:5550/internal/callback", params={"job_id": job_id})
+
     return Resp(status=True)
 
 
 @app.get("/internal/available", dependencies=[Depends(verify_setup)])
 async def available() -> Resp:
-    first = cluster.available[0]
-    if first and first.status == Status.IDLE:
-        return Resp(status=True, data={"node_id": first.id})
+    if cluster.available and cluster.available[0].status == Status.IDLE:
+        return Resp(status=True)
     return Resp(status=False)
