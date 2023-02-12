@@ -153,7 +153,7 @@ class Cluster(object):
 class Resp(BaseModel):
     status: bool
     msg: str = ""
-    data: list | dict | None = None
+    data: list | dict | str | None = None
 
 
 cluster: Cluster = Cluster()
@@ -406,25 +406,25 @@ async def job_abort(job_id: str) -> Resp:
 @app.get("/cloud/job/log/", dependencies=[Depends(verify_setup)])
 async def job_log(job_id: str) -> Resp:
     """monitoring: 4. cloud job log JOB_ID"""
-    rtn = dict()
+    log = ""
     for root, _, files in os.walk("tmp/"):
         for file in files:
             if file == job_id + ".log":
                 with open(os.path.join(root, file), "r") as f:
-                    rtn[job_id] = f.read()
-    return Resp(status=False, data=rtn)
+                    log = f.read()
+    return Resp(status=False, data=log)
 
 
 @app.get("/cloud/node/log/", dependencies=[Depends(verify_setup)])
 async def node_log(node_id: str) -> Resp:
-    """monitoring: 5. cloud log node NODE_ID"""
-    rtn = dict()
+    """monitoring: 5. cloud node log NODE_ID"""
+    log = ""
     for root, _, files in os.walk("tmp/" + node_id):
         for file in files:
             if file.endswith(".log"):
                 with open(os.path.join(root, file), "r") as f:
-                    rtn[file[:-4]] = f.read()
-    return Resp(status=False, data=rtn)
+                    log += f.read()
+    return Resp(status=False, data=log)
 
 
 @app.post("/internal/callback", dependencies=[Depends(verify_setup)])
