@@ -406,25 +406,37 @@ async def job_abort(job_id: str) -> Resp:
 @app.get("/cloud/job/log/", dependencies=[Depends(verify_setup)])
 async def job_log(job_id: str) -> Resp:
     """monitoring: 4. cloud job log JOB_ID"""
-    log = ""
+    log = None
+    found = False
     for root, _, files in os.walk("tmp/"):
         for file in files:
             if file == job_id + ".log":
                 with open(os.path.join(root, file), "r") as f:
                     log = f.read()
-    return Resp(status=False, data=log)
+                    found = True
+    if not found:
+        return Resp(
+            status=False, msg=f"cluster: no log found for job {job_id}", data=log
+        )
+    return Resp(status=True, data=log)
 
 
 @app.get("/cloud/node/log/", dependencies=[Depends(verify_setup)])
 async def node_log(node_id: str) -> Resp:
     """monitoring: 5. cloud node log NODE_ID"""
     log = ""
+    found = False
     for root, _, files in os.walk("tmp/" + node_id):
         for file in files:
             if file.endswith(".log"):
                 with open(os.path.join(root, file), "r") as f:
                     log += f.read()
-    return Resp(status=False, data=log)
+                    found = True
+    if not found:
+        return Resp(
+            status=False, msg=f"cluster: no log found for node {node_id}", data=log
+        )
+    return Resp(status=True, data=log)
 
 
 @app.post("/internal/callback", dependencies=[Depends(verify_setup)])
