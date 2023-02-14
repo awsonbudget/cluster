@@ -371,7 +371,6 @@ async def job_launch(job_name: str, job_id: str, job_script: UploadFile) -> Resp
     with tarfile.open(os.path.join(script_path, f"{job_id}.tar"), "w") as tar:
         tar.add(os.path.join(script_path, f"{job_id}.sh"))
 
-    await job_script.close()
     job = Job(name=job_name, id=job_id, node=node, status=Status.RUNNING)
     status = node.add_job(job)
     if status == False:
