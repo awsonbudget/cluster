@@ -10,7 +10,7 @@ dc = docker.from_env()
 
 
 @app.task
-def launch(job_id, node_id):
+def launch(job_id, node_id, callback):
     folder = os.path.join("tmp", node_id)
     with open(os.path.join(folder, f"{job_id}.tar"), "rb") as tar:
         container = dc.containers.get(node_id)
@@ -21,7 +21,7 @@ def launch(job_id, node_id):
         output = container.exec_run(["/bin/bash", "-c", f"{script}"])
         print(output)
         requests.post(
-            "http://localhost:5551/internal/callback",
+            callback+"/internal/callback",
             params={
                 "job_id": job_id,
                 "node_id": node_id,

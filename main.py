@@ -382,7 +382,7 @@ async def job_launch(job_name: str, job_id: str, job_script: UploadFile) -> Resp
         return Resp(status=False, msg=f"cluster: job id {job_id} already exist")
 
     node.status = Status.RUNNING
-    launch.delay(job_id, node.id)
+    launch.delay(job_id, node.id, config["CLUSTER"])
 
     return Resp(
         status=True,
