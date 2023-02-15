@@ -460,7 +460,7 @@ async def callback(job_id: str, node_id: str, exit_code: str, output: str) -> Re
     print(exit_code)
     print(output)
 
-    requests.post(config["MANAGER"] + "/internal/callback", params={"job_id": job_id})
+    requests.post(config["MANAGER"] + "/internal/callback/", params={"job_id": job_id}, verify=False)
 
     return Resp(status=True)
 
