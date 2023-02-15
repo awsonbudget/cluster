@@ -12,11 +12,13 @@ from fastapi import FastAPI, UploadFile, Request, HTTPException, Depends
 from pydantic import BaseModel
 import time
 import requests
+from dotenv import dotenv_values
 
 app = FastAPI()
 
 dc = docker.from_env()
 
+config = dotenv_values(".env")
 
 class Status(str, Enum):
     IDLE = "idle"
@@ -405,7 +407,7 @@ async def job_abort(job_id: str) -> Resp:
 @app.get("/cloud/job/log/", dependencies=[Depends(verify_setup)])
 async def job_log(job_id: str) -> Resp:
     """monitoring: 4. cloud job log JOB_ID"""
-    log = None
+    log = "" 
     found = False
     for root, _, files in os.walk("tmp/"):
         for file in files:
@@ -429,7 +431,7 @@ async def node_log(node_id: str) -> Resp:
         for file in files:
             if file.endswith(".log"):
                 with open(os.path.join(root, file), "r") as f:
-                    log += f.read()
+                    log += "\n"+f.read()
                     found = True
     if not found:
         return Resp(
@@ -458,7 +460,7 @@ async def callback(job_id: str, node_id: str, exit_code: str, output: str) -> Re
     print(exit_code)
     print(output)
 
-    requests.post("http://localhost:5550/internal/callback", params={"job_id": job_id})
+    requests.post(config["MANAGER"] + "/internal/callback", params={"job_id": job_id})
 
     return Resp(status=True)
 
