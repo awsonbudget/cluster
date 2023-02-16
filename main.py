@@ -421,7 +421,7 @@ async def job_log(job_id: str) -> Resp:
                     found = True
     if not found:
         return Resp(
-            status=False, msg=f"cluster: no log found for job {job_id}", data=log
+            status=False, msg=f"cluster: no log found for job {job_id}", data="empty"
         )
     return Resp(status=True, data=log)
 
@@ -438,9 +438,7 @@ async def node_log(node_id: str) -> Resp:
                     log += "\n" + f.read()
                     found = True
     if not found:
-        return Resp(
-            status=False, msg=f"cluster: no log found for node {node_id}", data=log
-        )
+        return Resp(status=False, msg=f"cluster: no log found for node {node_id}", data="empty")
     return Resp(status=True, data=log)
 
 
