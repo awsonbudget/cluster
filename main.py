@@ -293,7 +293,7 @@ async def node_register(node_name: str, pod_name: str | None = None) -> Resp:
             detach=True,
         )
         assert container.id != None
-        node = Node(name=node_name, id=container.id)
+        node = Node(name=node_name, id=container.id[0:12])
         status = pod.add_node(node)
         cluster.nodes[node.id] = node
         cluster.available.append(node)
@@ -438,7 +438,9 @@ async def node_log(node_id: str) -> Resp:
                     log += "\n" + f.read()
                     found = True
     if not found:
-        return Resp(status=False, msg=f"cluster: no log found for node {node_id}", data="empty")
+        return Resp(
+            status=False, msg=f"cluster: no log found for node {node_id}", data="empty"
+        )
     return Resp(status=True, data=log)
 
 
