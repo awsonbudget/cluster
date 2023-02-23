@@ -17,9 +17,9 @@ On MacOS, you can use `brew install rabbitmq` and `brew service start rabbitmq`
 
 In order to run the cluster, you need 2 commands:
 
-- To start the FastAPI server: `uvicorn main:app --reload --port 5001`
-- To start the Celery worker: `celery -A jobs worker --loglevel=INFO --concurrency 8`
+- To start the FastAPI server: `uvicorn src.main:app --reload --port 5001`
+- To start the Celery worker: `celery -A src.internal.worker worker --loglevel=INFO --concurrency 8`
 
 ## McGill VM
 
-- `uvicorn main:app --port 5001 --host 10.140.17.118`
+- `uvicorn src.main:app --port 5001 --host 10.140.17.118`
