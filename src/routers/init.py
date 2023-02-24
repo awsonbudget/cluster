@@ -11,12 +11,11 @@ router = APIRouter(tags=["init"])
 @router.post("/cloud/")
 async def init() -> Resp:
     """management: 1. cloud init"""
-    if (cluster.get_pod("default")) != None:
+    if cluster.initialized == True:
         return Resp(status=True, msg="cluster: warning already initialized")
 
     try:
         dc.images.pull("ubuntu")  # Assume all containers run on Ubuntu
-        cluster.register_pod("default")
 
         # TODO: do some filtering instead of wiping everything
         for container in dc.containers.list(all=True):
@@ -28,6 +27,7 @@ async def init() -> Resp:
         except OSError as e:
             print("tmp was already cleaned")
 
+        cluster.initialized = True
         return Resp(status=True, msg="cluster: setup completed")
 
     except docker.errors.APIError as e:

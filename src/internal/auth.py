@@ -3,5 +3,5 @@ from src.internal.cluster import cluster
 
 
 async def verify_setup():
-    if cluster.get_pod("default") == None:
+    if cluster.initialized == False:
         raise HTTPException(status_code=400, detail="cluster: please initialize first")

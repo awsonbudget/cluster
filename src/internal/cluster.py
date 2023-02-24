@@ -4,8 +4,11 @@ from collections import deque
 from typing import Optional
 from dotenv import dotenv_values
 import docker
+import secrets
+import string
 
 dc = docker.from_env()
+alphabet = string.ascii_letters.lower() + string.digits
 
 
 class Job(object):
@@ -50,9 +53,9 @@ class Node(object):
 
 
 class Pod(object):
-    def __init__(self, name: str, id: int):
+    def __init__(self, name: str):
         self.name: str = name
-        self.id: int = id
+        self.id: str = "".join(secrets.choice(alphabet) for _ in range(12))
         self.nodes: dict[str, Node] = dict()
 
     def get_node(self, name: str) -> Node | None:
@@ -83,29 +86,43 @@ class Cluster(object):
     def __init__(self):
         # The outer dict has pod_name as the key
         # The inner dict has node_name as the key and node_id as the value
+        self.initialized: bool = False
         self.pods: dict[str, Pod] = dict()
-        self.pod_id: int = 0
         self.running: dict[str, Job] = dict()
         self.nodes: dict[str, Node] = dict()
         self.available: deque[Node] = deque()
+        self.default_pod: Pod = Pod("default")
+        self.pods[self.default_pod.id] = self.default_pod
 
-    def register_pod(self, name: str) -> bool:
-        if name in self.pods:
-            return False
-        self.pods[name] = Pod(name, self.pod_id)
-        self.pod_id += 1
+    def pass_pod_name_check(self, name: str) -> bool:
+        for pod in self.get_pods():
+            if pod.name == name:
+                return False
         return True
 
-    def get_pod(self, name: str) -> Pod | None:
-        if name in self.pods:
-            return self.pods[name]
+    def register_pod(self, name: str) -> bool:
+        if not self.pass_pod_name_check(name):
+            return False
+        pod = Pod(name)
+        self.pods[pod.id] = pod
+        return True
+
+    def get_pod_by_name(self, name: str) -> Pod | None:
+        for pod in self.get_pods():
+            if pod.name == name:
+                return pod
+        return None
+
+    def get_pod_by_id(self, id: str) -> Pod | None:
+        if id in self.pods.keys():
+            return self.pods[id]
         return None
 
     def get_pods(self) -> list[Pod]:
         return list(self.pods.values())
 
     def remove_pod(self, name: str) -> Pod | None:
-        pod = self.get_pod(name)
+        pod = self.get_pod_by_name(name)
         if pod == None or len(pod.get_nodes()) != 0:
             return None
         return self.pods.pop(name)

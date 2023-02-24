@@ -11,9 +11,9 @@ router = APIRouter(tags=["node"])
 
 
 @router.get("/cloud/node/", dependencies=[Depends(verify_setup)])
-async def node_ls(pod_name: str | None = None) -> Resp:
+async def node_ls(pod_id: str | None = None) -> Resp:
     """monitoring: 2. cloud node ls [RES_POD_ID]"""
-    if pod_name == None:
+    if pod_id == None:
         rtn = []
         for pod in cluster.get_pods():
             for node in pod.get_nodes():
@@ -27,9 +27,9 @@ async def node_ls(pod_name: str | None = None) -> Resp:
                 )
         return Resp(status=True, data=rtn)
 
-    pod = cluster.get_pod(pod_name)
+    pod = cluster.get_pod_by_id(pod_id)
     if pod == None:
-        return Resp(status=False, msg=f"cluster: pod {pod_name} does not exist")
+        return Resp(status=False, msg=f"cluster: pod {pod_id} does not exist")
 
     rtn = []
     for node in pod.get_nodes():
@@ -40,25 +40,26 @@ async def node_ls(pod_name: str | None = None) -> Resp:
 
 
 @router.post("/cloud/node/", dependencies=[Depends(verify_setup)])
-async def node_register(node_name: str, pod_name: str | None = None) -> Resp:
+async def node_register(node_name: str, pod_id: str | None = None) -> Resp:
     """management: 4. cloud register NODE_NAME [POD_ID]"""
-    if pod_name == None:
-        pod_name = "default"
-
-    pod = cluster.get_pod(pod_name)
+    pod = None
+    if pod_id == None:
+        pod = cluster.default_pod
+    else:
+        pod = cluster.get_pod_by_id(pod_id)
     if pod == None:
-        return Resp(status=False, msg=f"cluster: pod {pod_name} does not exist")
+        return Resp(status=False, msg=f"cluster: pod with id {pod_id} does not exist")
 
     if pod.get_node(node_name) != None:
         return Resp(
             status=False,
-            msg=f"cluster: node {node_name} already exist in pod {pod_name}",
+            msg=f"cluster: node {node_name} already exist in pod with id {pod_id}",
         )
 
     try:
         container = dc.containers.run(
             image="ubuntu",
-            name=f"{pod_name}_{node_name}",
+            name=f"{pod_id}_{node_name}",
             command=["tail", "-f", "/dev/null"],  # keep it running
             detach=True,
         )
@@ -70,12 +71,12 @@ async def node_register(node_name: str, pod_name: str | None = None) -> Resp:
         if status:
             return Resp(
                 status=True,
-                msg=f"cluster: node {node_name} created in pod {pod_name}",
+                msg=f"cluster: node {node_name} created in pod with id {pod_id}",
             )
         else:
             return Resp(
                 status=False,
-                msg=f"cluster: node {node_name} already exist in pod {pod_name}",
+                msg=f"cluster: node {node_name} already exist in pod with id {pod_id}",
             )
 
     except docker.errors.APIError as e:
