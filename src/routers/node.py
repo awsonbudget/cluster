@@ -59,7 +59,7 @@ async def node_register(node_name: str, pod_id: str | None = None) -> Resp:
     try:
         container = dc.containers.run(
             image="ubuntu",
-            name=f"{pod_id}_{node_name}",
+            name=f"{pod.id}_{node_name}",
             command=["tail", "-f", "/dev/null"],  # keep it running
             detach=True,
         )
@@ -71,12 +71,12 @@ async def node_register(node_name: str, pod_id: str | None = None) -> Resp:
         if status:
             return Resp(
                 status=True,
-                msg=f"cluster: node {node_name} created in pod with id {pod_id}",
+                msg=f"cluster: node {node_name} created in pod with id {pod.id}",
             )
         else:
             return Resp(
                 status=False,
-                msg=f"cluster: node {node_name} already exist in pod with id {pod_id}",
+                msg=f"cluster: node {node_name} already exist in pod with id {pod.id}",
             )
 
     except docker.errors.APIError as e:
