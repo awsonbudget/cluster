@@ -86,6 +86,8 @@ async def job_log(job_id: str) -> Resp:
                     found = True
     if not found:
         return Resp(
-            status=False, msg=f"cluster: no log found for job {job_id}", data="empty"
+            status=False,
+            msg=f"cluster: no log found for job {job_id}",
+            data="no log found for job {job_id}",
         )
     return Resp(status=True, data=log)
