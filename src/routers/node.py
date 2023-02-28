@@ -132,6 +132,6 @@ async def node_log(node_id: str) -> Resp:
         return Resp(
             status=False,
             msg=f"cluster: no log found for node {node_id}",
-            data="no log found for node {node_id}",
+            data=f"no log found for node {node_id}",
         )
     return Resp(status=True, data=log)

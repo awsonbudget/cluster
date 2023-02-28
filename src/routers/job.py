@@ -88,6 +88,6 @@ async def job_log(job_id: str) -> Resp:
         return Resp(
             status=False,
             msg=f"cluster: no log found for job {job_id}",
-            data="no log found for job {job_id}",
+            data=f"no log found for job {job_id}",
         )
     return Resp(status=True, data=log)
