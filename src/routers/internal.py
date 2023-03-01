@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from src.internal.type import Resp
 from src.internal.cluster import cluster, config
 from src.internal.auth import verify_setup
@@ -10,9 +11,14 @@ import requests
 router = APIRouter(tags=["internal"])
 
 
+class Log(BaseModel):
+    data: str
+
+
 @router.post("/internal/callback", dependencies=[Depends(verify_setup)])
-async def callback(job_id: str, node_id: str, exit_code: str, output: str) -> Resp:
+async def callback(job_id: str, node_id: str, exit_code: str, log: Log) -> Resp:
     # TODO: Handle None output
+    assert config["MANAGER"] != None
     job = cluster.remove_running(job_id)
     if job == None:
         raise Exception(
@@ -24,11 +30,11 @@ async def callback(job_id: str, node_id: str, exit_code: str, output: str) -> Re
 
     cluster.available.append(job.node)
 
-    with open(f"tmp/{node_id}/{job_id}.log", "w") as log:
-        log.write(output if output else "")
+    with open(f"tmp/{node_id}/{job_id}.log", "w") as f:
+        f.write(log.data if log.data else "")
 
     print(exit_code)
-    print(output)
+    print(log.data)
 
     requests.post(
         config["MANAGER"] + "/internal/callback/",
