@@ -5,7 +5,7 @@ from src.routers import init, internal, job, node, pod
 
 app = FastAPI()
 
-
+#Set up a middleware to record the system info
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start_time = time.time()

@@ -18,10 +18,12 @@ async def init() -> Resp:
         dc.images.pull("ubuntu")  # Assume all containers run on Ubuntu
 
         # TODO: do some filtering instead of wiping everything
+        #Remove all the containers in the machine
         for container in dc.containers.list(all=True):
             dc.api.stop(container.id)
             dc.api.remove_container(container.id, force=True)
 
+        #Clean all the file related to the previous cloud
         try:
             shutil.rmtree("tmp")
         except OSError as e:

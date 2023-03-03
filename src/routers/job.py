@@ -9,7 +9,6 @@ import tarfile
 
 router = APIRouter(tags=["job"])
 
-
 @router.get("/cloud/job/", dependencies=[Depends(verify_setup)])
 async def job_ls(node_id: str | None = None) -> Resp:
     """monitoring: 3. cloud job ls [NODE_ID]"""
@@ -28,7 +27,9 @@ async def job_launch(job_name: str, job_id: str, job_script: UploadFile) -> Resp
             status=False,
             msg=f"cluster: unexpected failure there is no available node",
         )
+    # Get one available node from the queue
     node = cluster.available.popleft()
+    # If the left-side is even unavailable, that means all the nodes are working now
     if node.status != Status.IDLE:
         return Resp(
             status=False,
@@ -40,6 +41,7 @@ async def job_launch(job_name: str, job_id: str, job_script: UploadFile) -> Resp
     os.makedirs(script_path, exist_ok=True)
     with open(os.path.join(script_path, f"{job_id}.sh"), "wb") as f:
         f.write(await job_script.read())
+    # Write launcher.sh to control the execution of jobs
     with open(os.path.join(script_path, "launcher.sh"), "w") as f:
         script = f"""
 apt-get update && apt install curl jq -y
@@ -51,6 +53,7 @@ curl -X 'POST' "http://host.docker.internal:{config["CLUSTER"].split(":")[2]}/in
 """
         f.write(script)
 
+    # Pack the job and launcher for passing to the container
     with tarfile.open(os.path.join(script_path, f"{job_id}.tar"), "w") as tar:
         tar.add(os.path.join(script_path, f"{job_id}.sh"))
         tar.add(os.path.join(script_path, "launcher.sh"))
@@ -60,6 +63,7 @@ curl -X 'POST' "http://host.docker.internal:{config["CLUSTER"].split(":")[2]}/in
     status = node.add_job(job)
     if status == False:
         return Resp(status=False, msg=f"cluster: job id {job_id} already exist")
+    # Check if the job has been launched 
     status = cluster.add_running(job)
     if status == False:
         return Resp(status=False, msg=f"cluster: job id {job_id} already exist")
@@ -71,6 +75,7 @@ curl -X 'POST' "http://host.docker.internal:{config["CLUSTER"].split(":")[2]}/in
     with open(os.path.join(script_path, f"{job_id}.tar"), "rb") as tar:
         container.put_archive("/", tar)
 
+    # Execute the job in the container
     launcher = os.path.join(script_path, "launcher.sh")
     container.exec_run(["/bin/bash", "-c", f"chmod +x {launcher}"], detach=True)
     container.exec_run(["/bin/bash", "-c", f"{launcher}"], detach=True)
@@ -90,12 +95,13 @@ async def job_abort(job_id: str) -> Resp:
     if job == None:
         return Resp(status=False, msg="cluster: job not found in the running list")
 
+    # Mark the job status and node status
     job.status = Status.ABORTED
     job.node.status = Status.IDLE
     cluster.available.append(job.node)
     return Resp(status=True, msg=f"cluster: job {job_id} aborted")
 
-
+## Get the job log
 @router.get("/cloud/job/log/", dependencies=[Depends(verify_setup)])
 async def job_log(job_id: str) -> Resp:
     """monitoring: 4. cloud job log JOB_ID"""
@@ -103,6 +109,7 @@ async def job_log(job_id: str) -> Resp:
     found = False
     for root, _, files in os.walk("tmp/"):
         for file in files:
+            # Find the log file and record the log
             if file == job_id + ".log":
                 with open(os.path.join(root, file), "r") as f:
                     log = f.read()

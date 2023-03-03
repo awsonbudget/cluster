@@ -10,7 +10,7 @@ import string
 dc = docker.from_env()
 alphabet = string.ascii_letters.lower() + string.digits
 
-
+## Set up data structure for jobs
 class Job(object):
     def __init__(self, id: str, name: str, node: Node, status: Status = Status.RUNNING):
         self.id: str = id
@@ -26,7 +26,7 @@ class Job(object):
             "status": self.status,
         }
 
-
+## Set up data structure for Nodes
 class Node(object):
     def __init__(self, name: str, id: str):
         self.name: str = name
@@ -51,7 +51,7 @@ class Node(object):
     def toJSON(self) -> dict:
         return {"name": self.name, "id": self.id, "status": self.status}
 
-
+## Set up data structure for Pods
 class Pod(object):
     def __init__(self, name: str):
         self.name: str = name
@@ -81,7 +81,7 @@ class Pod(object):
     def toJSON(self) -> dict:
         return {"name": self.name, "id": self.id}
 
-
+## Set up data structure and basic functions for Cluster
 class Cluster(object):
     def __init__(self):
         # The outer dict has pod_name as the key
@@ -96,6 +96,7 @@ class Cluster(object):
 
     def pass_pod_name_check(self, name: str) -> bool:
         for pod in self.get_pods():
+            #Check whether the input name is in the pod
             if pod.name == name:
                 return False
         return True
