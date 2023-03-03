@@ -91,7 +91,12 @@ curl -X 'POST' "http://host.docker.internal:{config["CLUSTER"].split(":")[2]}/in
 async def job_abort(job_id: str) -> Resp:
     """management: 7. cloud abort JOB_ID"""
     # TODO: abort in Celery as well
+    # Restart the container to abort the job in it
     job = cluster.remove_running(job_id)
+    node_now=job.node.id
+    print(node_now)
+    containers = dc.containers.get(node_now)
+    containers.restart()
     if job == None:
         return Resp(status=False, msg="cluster: job not found in the running list")
 
