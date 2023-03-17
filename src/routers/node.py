@@ -40,13 +40,9 @@ async def node_ls(pod_id: str | None = None) -> Resp:
 
 
 @router.post("/cloud/node/", dependencies=[Depends(verify_setup)])
-async def node_register(node_name: str, pod_id: str | None = None) -> Resp:
+async def node_register(node_name: str, pod_id: str) -> Resp:
     """management: 4. cloud register NODE_NAME [POD_ID]"""
-    pod = None
-    if pod_id == None:
-        pod = cluster.default_pod
-    else:
-        pod = cluster.get_pod_by_id(pod_id)
+    pod = cluster.get_pod_by_id(pod_id)
     if pod == None:
         return Resp(status=False, msg=f"cluster: pod with id {pod_id} does not exist")
 
@@ -64,7 +60,7 @@ async def node_register(node_name: str, pod_id: str | None = None) -> Resp:
             detach=True,
         )
         assert container.id != None
-        node = Node(name=node_name, id=container.id[0:12])
+        node = Node(name=node_name, id=container.id[0:12], pod_id=pod_id)
         status = pod.add_node(node)
         cluster.nodes[node.id] = node
         cluster.available.append(node)
@@ -72,6 +68,7 @@ async def node_register(node_name: str, pod_id: str | None = None) -> Resp:
             return Resp(
                 status=True,
                 msg=f"cluster: node {node_name} created in pod with id {pod.id}",
+                data=node.id,
             )
         else:
             return Resp(
@@ -85,36 +82,31 @@ async def node_register(node_name: str, pod_id: str | None = None) -> Resp:
 
 
 @router.delete("/cloud/node/", dependencies=[Depends(verify_setup)])
-async def node_rm(node_name: str) -> Resp:
-    """management: 5. cloud rm NODE_NAME"""
-    for pod in cluster.get_pods():
-        node = pod.get_node(node_name)
-        if node == None:
-            continue
+async def node_rm(node_id: str) -> Resp:
+    """management: 5. cloud rm NODE_ID"""
+    # TODO: this is very mess need to refactor
+    node = cluster.nodes.get(node_id)
+    if node == None:
+        return Resp(status=False, msg=f"cluster: node {node_id} does not exist")
+    pod = cluster.get_pod_by_id(node.pod_id)
+    if pod == None:
+        return Resp(
+            status=False,
+            msg=f"cluster: unexpected error node {node_id} is not in any pod",
+        )
 
-        try:
-            node = pod.remove_node(node_name)
-            if node == None:
-                return Resp(
-                    status=False,
-                    msg=f"cluster: node {node_name} is not IDLE",
-                )
-
-            dc.api.remove_container(container=node.id, force=True)
-            cluster.nodes.pop(node.id)
-            cluster.available.remove(node)
-            return Resp(
-                status=True,
-                msg=f"cluster: node {node_name} removed in pod {pod.name}",
-            )
-        except docker.errors.APIError as e:
-            print(e)
-            return Resp(status=False, msg=f"cluster: docker.errors.APIError")
-
-    return Resp(
-        status=False,
-        msg=f"cluster: node {node_name} does not exist in this cluster",
-    )
+    try:
+        dc.api.remove_container(container=node_id, force=True)
+        pod.remove_node(node.id)
+        cluster.nodes.pop(node_id)
+        cluster.available.remove(node)
+        return Resp(
+            status=True,
+            msg=f"cluster: node {node.name} removed in pod {node.pod_id}",
+        )
+    except docker.errors.APIError as e:
+        print(e)
+        return Resp(status=False, msg=f"cluster: docker.errors.APIError")
 
 
 @router.get("/cloud/node/log/", dependencies=[Depends(verify_setup)])

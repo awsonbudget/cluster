@@ -5,7 +5,7 @@ from src.internal.auth import verify_setup
 from src.internal.type import Resp
 
 
-router = APIRouter(tags=["node"])
+router = APIRouter(tags=["pod"])
 
 
 @router.get("/cloud/pod/", dependencies=[Depends(verify_setup)])
@@ -20,9 +20,11 @@ async def pod_ls():
 @router.post("/cloud/pod/", dependencies=[Depends(verify_setup)])
 async def pod_register(pod_name: str):
     """management: 2. cloud pod register POD_NAME"""
-    status = cluster.register_pod(pod_name)
-    if status == True:
-        return Resp(status=True, msg=f"cluster: {pod_name} is added as a pod")
+    pod = cluster.register_pod(pod_name)
+    if pod != None:
+        return Resp(
+            status=True, msg=f"cluster: {pod_name} is added as a pod", data=pod.id
+        )
     else:
         return Resp(status=False, msg=f"cluster: pod {pod_name} already exists")
 
@@ -30,9 +32,6 @@ async def pod_register(pod_name: str):
 @router.delete("/cloud/pod/", dependencies=[Depends(verify_setup)])
 async def pod_rm(pod_name: str):
     """management: 3. cloud pod rm POD_NAME"""
-    if pod_name == "default":
-        return Resp(status=False, msg=f"cluster: you cannot remove the default pod")
-
     pod = cluster.remove_pod(pod_name)
     if pod:
         return Resp(status=True, msg=f"cluster: {pod_name} is removed from pods")

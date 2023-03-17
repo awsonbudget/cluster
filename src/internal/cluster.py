@@ -28,9 +28,10 @@ class Job(object):
 
 
 class Node(object):
-    def __init__(self, name: str, id: str):
+    def __init__(self, name: str, id: str, pod_id: str):
         self.name: str = name
         self.id: str = id
+        self.pod_id: str = pod_id
         self.status = Status.IDLE
         self.jobs: dict[str, Job] = dict()
 
@@ -56,7 +57,7 @@ class Pod(object):
     def __init__(self, name: str):
         self.name: str = name
         self.id: str = "".join(secrets.choice(alphabet) for _ in range(12))
-        self.nodes: dict[str, Node] = dict()
+        self.nodes: dict[str, Node] = dict()  # key is the node id
 
     def get_node(self, name: str) -> Node | None:
         if name in self.nodes:
@@ -67,16 +68,16 @@ class Pod(object):
         return list(self.nodes.values())
 
     def add_node(self, node: Node) -> bool:
-        if node.name in self.nodes:
+        if node.id in self.nodes:
             return False
-        self.nodes[node.name] = node
+        self.nodes[node.id] = node
         return True
 
-    def remove_node(self, name: str) -> Node | None:
-        node = self.get_node(name)
+    def remove_node(self, node_id: str) -> Node | None:
+        node = self.get_node(node_id)
         if node == None or node.status != Status.IDLE:
             return None
-        return self.nodes.pop(name)
+        return self.nodes.pop(node_id)
 
     def toJSON(self) -> dict:
         return {"name": self.name, "id": self.id}
@@ -84,15 +85,11 @@ class Pod(object):
 
 class Cluster(object):
     def __init__(self):
-        # The outer dict has pod_name as the key
-        # The inner dict has node_name as the key and node_id as the value
         self.initialized: bool = False
         self.pods: dict[str, Pod] = dict()
         self.running: dict[str, Job] = dict()
-        self.nodes: dict[str, Node] = dict()
+        self.nodes: dict[str, Node] = dict()  # key is the node id
         self.available: deque[Node] = deque()
-        self.default_pod: Pod = Pod("default")
-        self.pods[self.default_pod.id] = self.default_pod
 
     def pass_pod_name_check(self, name: str) -> bool:
         for pod in self.get_pods():
@@ -100,12 +97,12 @@ class Cluster(object):
                 return False
         return True
 
-    def register_pod(self, name: str) -> bool:
+    def register_pod(self, name: str) -> Pod | None:
         if not self.pass_pod_name_check(name):
-            return False
+            return None
         pod = Pod(name)
         self.pods[pod.id] = pod
-        return True
+        return pod
 
     def get_pod_by_name(self, name: str) -> Pod | None:
         for pod in self.get_pods():
