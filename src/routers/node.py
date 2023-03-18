@@ -20,7 +20,7 @@ async def node_ls(pod_id: str | None = None) -> Resp:
                     dict(
                         node_name=node.get_node_name(),
                         node_id=node.get_node_id(),
-                        status=node.get_node_status(),
+                        node_status=node.get_node_status(),
                         pod_data=pod.toJSON(),
                     )
                 )

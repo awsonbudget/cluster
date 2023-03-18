@@ -166,8 +166,8 @@ class Cluster(object):
     def has_dup_pod_name(self, pod_name: str) -> bool:
         for pod in self.get_pods():
             if pod.get_pod_name() == pod_name:
-                return False
-        return True
+                return True
+        return False
 
     def add_pod(self, pod: Pod):
         if pod.get_pod_id in self.__pods:
@@ -197,12 +197,10 @@ class Cluster(object):
 
     def has_dup_node_name(self, node_name: str, pod_id: str) -> bool:
         pod = self.get_pod_by_id(pod_id)
-        if pod == None:
-            return False
         for node in pod.get_nodes():
             if node.get_node_name() == node_name:
-                return False
-        return True
+                return True
+        return False
 
     def add_node(self, node: Node):
         if node.get_node_id() in self.__nodes:
