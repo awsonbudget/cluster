@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends
 from src.internal.type import Resp
 from src.internal.cluster import cluster, dc, Node
 from src.internal.auth import verify_setup
-from src.internal.type import Resp
 import os
 import docker.errors
 
@@ -19,10 +18,10 @@ async def node_ls(pod_id: str | None = None) -> Resp:
             for node in pod.get_nodes():
                 rtn.append(
                     dict(
-                        name=node.name,
-                        id=node.id,
-                        status=node.status,
-                        pod=pod.toJSON(),
+                        node_name=node.get_node_name(),
+                        node_id=node.get_node_id(),
+                        status=node.get_node_status(),
+                        pod_data=pod.toJSON(),
                     )
                 )
         return Resp(status=True, data=rtn)
@@ -34,7 +33,12 @@ async def node_ls(pod_id: str | None = None) -> Resp:
     rtn = []
     for node in pod.get_nodes():
         rtn.append(
-            dict(name=node.name, id=node.id, status=node.status, pod=pod.toJSON())
+            dict(
+                node_name=node.get_node_name(),
+                node_id=node.get_node_id(),
+                node_status=node.get_node_status(),
+                pod_data=pod.toJSON(),
+            )
         )
     return Resp(status=True, data=rtn)
 
@@ -46,7 +50,7 @@ async def node_register(node_name: str, pod_id: str) -> Resp:
     if pod == None:
         return Resp(status=False, msg=f"cluster: pod with id {pod_id} does not exist")
 
-    if pod.get_node(node_name) != None:
+    if cluster.has_dup_node_name(node_name, pod_id):
         return Resp(
             status=False,
             msg=f"cluster: node {node_name} already exist in pod with id {pod_id}",
@@ -55,26 +59,26 @@ async def node_register(node_name: str, pod_id: str) -> Resp:
     try:
         container = dc.containers.run(
             image="ubuntu",
-            name=f"{pod.id}_{node_name}",
+            name=f"{pod_id}_{node_name}",
             command=["tail", "-f", "/dev/null"],  # keep it running
             detach=True,
         )
-        assert container.id != None
-        node = Node(name=node_name, id=container.id[0:12], pod_id=pod_id)
-        status = pod.add_node(node)
-        cluster.nodes[node.id] = node
-        cluster.available.append(node)
-        if status:
-            return Resp(
-                status=True,
-                msg=f"cluster: node {node_name} created in pod with id {pod.id}",
-                data=node.id,
-            )
-        else:
-            return Resp(
-                status=False,
-                msg=f"cluster: node {node_name} already exist in pod with id {pod.id}",
-            )
+        assert container.id != None  # type: ignore
+        node = Node(node_name=node_name, node_id=container.id[0:12], pod_id=pod_id)  # type: ignore
+
+        try:
+            pod.add_node(node)
+            cluster.add_node(node)
+            cluster.add_available_node(node)
+        except Exception as e:
+            print(e)
+            return Resp(status=False, msg=f"cluster: {e}")
+
+        return Resp(
+            status=True,
+            msg=f"cluster: node {node_name} created in pod with id {pod.get_pod_id()}",
+            data=node.get_node_id(),
+        )
 
     except docker.errors.APIError as e:
         print(e)
@@ -84,25 +88,27 @@ async def node_register(node_name: str, pod_id: str) -> Resp:
 @router.delete("/cloud/node/", dependencies=[Depends(verify_setup)])
 async def node_rm(node_id: str) -> Resp:
     """management: 5. cloud rm NODE_ID"""
-    # TODO: this is very mess need to refactor
-    node = cluster.nodes.get(node_id)
-    if node == None:
-        return Resp(status=False, msg=f"cluster: node {node_id} does not exist")
-    pod = cluster.get_pod_by_id(node.pod_id)
-    if pod == None:
-        return Resp(
-            status=False,
-            msg=f"cluster: unexpected error node {node_id} is not in any pod",
-        )
+    try:
+        node = cluster.get_node_by_id(node_id)
+        pod = cluster.get_pod_by_id(node.get_pod_id())
+    except Exception as e:
+        print(e)
+        return Resp(status=False, msg=f"cluster: {e}")
 
     try:
         dc.api.remove_container(container=node_id, force=True)
-        pod.remove_node(node.id)
-        cluster.nodes.pop(node_id)
-        cluster.available.remove(node)
+
+        try:
+            pod.remove_node_by_id(node.get_node_id())
+            cluster.remove_node_by_id(node_id)
+            cluster.remove_available_node(node)
+        except Exception as e:
+            print(e)
+            return Resp(status=False, msg=f"cluster: {e}")
+
         return Resp(
             status=True,
-            msg=f"cluster: node {node.name} removed in pod {node.pod_id}",
+            msg=f"cluster: node {node.get_node_name()} removed in pod {node.get_pod_id()}",
         )
     except docker.errors.APIError as e:
         print(e)

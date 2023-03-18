@@ -1,7 +1,6 @@
 from __future__ import annotations
-from src.internal.type import Status
+from src.internal.type import JobStatus, NodeStatus
 from collections import deque
-from typing import Optional
 from dotenv import dotenv_values
 import docker
 import secrets
@@ -10,135 +9,261 @@ import string
 dc = docker.from_env()
 alphabet = string.ascii_letters.lower() + string.digits
 
+"""
+A couple notes on the cluster structure, especially the state:
+There are 4 classes: Cluster, Pod, Node and Job.
+
+Job
+- a status state
+
+Node
+- a status state
+- a list of jobs
+
+Pod 
+- a list of nodes
+
+Cluster
+- initialization status
+- a map of pods indexed by pod_id for easy lookup
+- a map of nodes indexed by node_id for easy lookup
+- a list of currently running jobs
+- a list of available nodes
+"""
+
 
 class Job(object):
-    def __init__(self, id: str, name: str, node: Node, status: Status = Status.RUNNING):
-        self.id: str = id
-        self.name: str = name
-        self.node: Node = node
-        self.status: Status = status
+    def __init__(
+        self,
+        job_id: str,
+        job_name: str,
+        node_id: str,
+        job_status: JobStatus = JobStatus.RUNNING,
+    ):
+        self.__job_id: str = job_id
+        self.__job_name: str = job_name
+        self.__node_id: str = node_id
+        self.__job_status: JobStatus = job_status
+
+    def get_job_id(self) -> str:
+        return self.__job_id
+
+    def get_node_id(self) -> str:
+        return self.__node_id
+
+    def set_completed(self):
+        self.__job_status = JobStatus.COMPLETED
+
+    def set_aborted(self):
+        self.__job_status = JobStatus.ABORTED
 
     def toJSON(self) -> dict:
         return {
-            "id": self.id,
-            "name": self.name,
-            "node": self.node.name,
-            "status": self.status,
+            "job_id": self.__job_id,
+            "job_name": self.__job_name,
+            "node_id": self.__node_id,
+            "job_status": self.__job_status,
         }
 
 
 class Node(object):
-    def __init__(self, name: str, id: str, pod_id: str):
-        self.name: str = name
-        self.id: str = id
-        self.pod_id: str = pod_id
-        self.status = Status.IDLE
-        self.jobs: dict[str, Job] = dict()
+    def __init__(self, node_name: str, node_id: str, pod_id: str):
+        self.__node_id: str = node_id
+        self.__node_name: str = node_name
+        self.__pod_id: str = pod_id
+        self.__node_status = NodeStatus.IDLE
+        self.__jobs: dict[str, Job] = dict()  # key is the job id
 
-    def get_job(self, id: str) -> Job | None:
-        if id in self.jobs:
-            return self.jobs[id]
-        return None
+    def get_node_id(self) -> str:
+        return self.__node_id
+
+    def get_node_name(self) -> str:
+        return self.__node_name
+
+    def get_pod_id(self) -> str:
+        return self.__pod_id
+
+    def get_node_status(self) -> NodeStatus:
+        return self.__node_status
 
     def get_jobs(self) -> list[Job]:
-        return list(self.jobs.values())
+        return list(self.__jobs.values())
 
-    def add_job(self, job: Job) -> bool:
-        if job.id in self.jobs:
-            return False
-        self.jobs[job.id] = job
-        return True
+    def set_running(self):
+        self.__node_status = NodeStatus.RUNNING
+
+    def set_idle(self):
+        self.__node_status = NodeStatus.IDLE
+
+    def add_job(self, job: Job):
+        if job.get_job_id() in self.__jobs:
+            raise Exception("job already exists")
+        self.__jobs[job.get_job_id()] = job
 
     def toJSON(self) -> dict:
-        return {"name": self.name, "id": self.id, "status": self.status}
+        return {
+            "node_name": self.__node_name,
+            "node_id": self.__node_id,
+            "node_status": self.__node_status,
+        }
 
 
 class Pod(object):
-    def __init__(self, name: str):
-        self.name: str = name
-        self.id: str = "".join(secrets.choice(alphabet) for _ in range(12))
-        self.nodes: dict[str, Node] = dict()  # key is the node id
+    def __init__(self, pod_name: str):
+        self.__pod_name: str = pod_name
+        self.__pod_id: str = "".join(secrets.choice(alphabet) for _ in range(12))
+        self.__nodes: dict[str, Node] = dict()  # key is the node id
 
-    def get_node(self, name: str) -> Node | None:
-        if name in self.nodes:
-            return self.nodes[name]
-        return None
+    def get_pod_name(self) -> str:
+        return self.__pod_name
+
+    def get_pod_id(self) -> str:
+        return self.__pod_id
+
+    def get_node_by_id(self, node_id: str) -> Node:
+        try:
+            return self.__nodes[node_id]
+        except KeyError:
+            raise Exception("node does not exist")
 
     def get_nodes(self) -> list[Node]:
-        return list(self.nodes.values())
+        return list(self.__nodes.values())
 
-    def add_node(self, node: Node) -> bool:
-        if node.id in self.nodes:
-            return False
-        self.nodes[node.id] = node
-        return True
+    def add_node(self, node: Node):
+        if node.get_node_id() in self.__nodes:
+            raise Exception("node already exists")
+        self.__nodes[node.get_node_id()] = node
 
-    def remove_node(self, node_id: str) -> Node | None:
-        node = self.get_node(node_id)
-        if node == None or node.status != Status.IDLE:
-            return None
-        return self.nodes.pop(node_id)
+    def remove_node_by_id(self, node_id: str) -> Node:
+        node = self.get_node_by_id(node_id)
+        if node == None:
+            raise Exception("node does not exist")
+        if node.get_node_status() != NodeStatus.IDLE:
+            raise Exception("node is not idle")
+        try:
+            return self.__nodes.pop(node_id)
+        except KeyError:
+            raise Exception("node does not exist")
 
     def toJSON(self) -> dict:
-        return {"name": self.name, "id": self.id}
+        return {"pod_name": self.__pod_name, "pod_id": self.__pod_id}
 
 
 class Cluster(object):
     def __init__(self):
-        self.initialized: bool = False
-        self.pods: dict[str, Pod] = dict()
-        self.running: dict[str, Job] = dict()
-        self.nodes: dict[str, Node] = dict()  # key is the node id
-        self.available: deque[Node] = deque()
+        self.__initialized: bool = False
+        self.__pods: dict[str, Pod] = dict()  # key is the pod id
+        self.__nodes: dict[str, Node] = dict()  # key is the node id
+        self.__available_nodes: deque[Node] = deque()
+        self.__running: dict[str, Job] = dict()  # key is the job id
 
-    def pass_pod_name_check(self, name: str) -> bool:
+    def is_initialized(self) -> bool:
+        return self.__initialized
+
+    def initialize(self):
+        self.__initialized = True
+
+    def has_dup_pod_name(self, pod_name: str) -> bool:
         for pod in self.get_pods():
-            if pod.name == name:
+            if pod.get_pod_name() == pod_name:
                 return False
         return True
 
-    def register_pod(self, name: str) -> Pod | None:
-        if not self.pass_pod_name_check(name):
-            return None
-        pod = Pod(name)
-        self.pods[pod.id] = pod
-        return pod
+    def add_pod(self, pod: Pod):
+        if pod.get_pod_id in self.__pods:
+            raise Exception("pod id already exists")
+        self.__pods[pod.get_pod_id()] = pod
 
-    def get_pod_by_name(self, name: str) -> Pod | None:
+    def get_pod_by_name(self, pod_name: str) -> Pod:
         for pod in self.get_pods():
-            if pod.name == name:
+            if pod.get_pod_name() == pod_name:
                 return pod
-        return None
+        raise Exception(f"pod with name {pod_name} does not exist")
 
-    def get_pod_by_id(self, id: str) -> Pod | None:
-        if id in self.pods.keys():
-            return self.pods[id]
-        return None
+    def get_pod_by_id(self, pod_id: str) -> Pod:
+        try:
+            return self.__pods[pod_id]
+        except KeyError:
+            raise Exception(f"pod with id {pod_id} does not exist")
 
     def get_pods(self) -> list[Pod]:
-        return list(self.pods.values())
+        return list(self.__pods.values())
 
-    def remove_pod(self, name: str) -> Pod | None:
-        pod = self.get_pod_by_name(name)
-        if pod == None or len(pod.get_nodes()) != 0:
-            return None
-        return self.pods.pop(name)
+    def remove_pod_by_id(self, pod_id: str) -> Pod:
+        try:
+            return self.__pods.pop(pod_id)
+        except KeyError:
+            raise Exception(f"pod with id {pod_id} does not exist")
 
-    def add_running(self, job: Job) -> bool:
-        if job.id in self.running:
+    def has_dup_node_name(self, node_name: str, pod_id: str) -> bool:
+        pod = self.get_pod_by_id(pod_id)
+        if pod == None:
             return False
-        self.running[job.id] = job
+        for node in pod.get_nodes():
+            if node.get_node_name() == node_name:
+                return False
         return True
 
-    def remove_running(self, job_id: str) -> Job | None:
-        return self.running.pop(job_id, None)
+    def add_node(self, node: Node):
+        if node.get_node_id() in self.__nodes:
+            raise Exception("node id already exists")
+        self.__nodes[node.get_node_id()] = node
 
-    def get_jobs(self, node_name: Optional[str] = None) -> list[Job]:
+    def get_node_by_id(self, node_id: str) -> Node:
+        try:
+            return self.__nodes[node_id]
+        except KeyError:
+            raise Exception(f"node with id {node_id} does not exist")
+
+    def remove_node_by_id(self, node_id: str) -> Node:
+        node = self.get_node_by_id(node_id)
+        if node == None:
+            raise Exception("node does not exist")
+        if node.get_node_status() != NodeStatus.IDLE:
+            raise Exception("node is not idle")
+        try:
+            return self.__nodes.pop(node_id)
+        except KeyError:
+            raise Exception("node does not exist")
+
+    def add_available_node(self, node: Node):
+        self.__available_nodes.append(node)
+
+    def has_available_nodes(self) -> bool:
+        return (
+            len(self.__available_nodes) > 0
+            # the below should never be false, but just in case
+            and self.__available_nodes[0].get_node_status() == NodeStatus.IDLE
+        )
+
+    def pop_available_node(self) -> Node:
+        if not self.has_available_nodes():
+            raise Exception("no available nodes")
+        return self.__available_nodes.popleft()
+
+    def remove_available_node(self, node: Node):
+        self.__available_nodes.remove(node)
+
+    def add_running_job(self, job: Job):
+        if job.get_job_id() in self.__running:
+            raise Exception("job id already exists")
+        self.__running[job.get_job_id()] = job
+
+    def remove_running(self, job_id: str) -> Job:
+        try:
+            return self.__running.pop(job_id)
+        except KeyError:
+            raise Exception(f"job with id {job_id} does not exist in the running list")
+
+    def get_jobs(self) -> list[Job]:
+        return list(self.__running.values())
+
+    def get_jobs_under_node_id(self, node_id: str | None = None) -> list[Job]:
         rtn = []
         for pod in self.get_pods():
             for node in pod.get_nodes():
-                if node_name:
-                    if node.name == node_name:
+                if node_id:
+                    if node.get_node_id() == node_id:
                         rtn.extend(node.get_jobs())
                 else:
                     rtn.extend(node.get_jobs())

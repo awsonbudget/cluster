@@ -1,11 +1,9 @@
+import requests
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from src.internal.type import Resp
 from src.internal.cluster import cluster, config
 from src.internal.auth import verify_setup
-
-from src.internal.type import Resp, Status
-import requests
 
 
 router = APIRouter(tags=["internal"])
@@ -25,10 +23,12 @@ async def callback(job_id: str, node_id: str, exit_code: str, log: Log) -> Resp:
             f"cluster: job {job_id} received from callback is not in the running list"
         )
 
-    job.status = Status.COMPLETED
-    job.node.status = Status.IDLE
-
-    cluster.available.append(job.node)
+    job.set_completed()
+    node = cluster.get_node_by_id(job.get_node_id())
+    if node == None:
+        raise Exception(f"cluster: node {job.get_node_id()} does not exist")
+    node.set_idle()
+    cluster.add_available_node(node)
 
     with open(f"tmp/{node_id}/{job_id}.log", "w") as f:
         f.write(log.data if log.data else "")
@@ -47,6 +47,4 @@ async def callback(job_id: str, node_id: str, exit_code: str, log: Log) -> Resp:
 
 @router.get("/internal/available", dependencies=[Depends(verify_setup)])
 async def available() -> Resp:
-    if cluster.available and cluster.available[0].status == Status.IDLE:
-        return Resp(status=True)
-    return Resp(status=False)
+    return Resp(status=cluster.has_available_nodes())

@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, UploadFile
-from src.internal.type import Resp
 from src.internal.cluster import cluster, config, Job, dc
 from src.internal.auth import verify_setup
-from src.internal.type import Resp, Status
+from src.internal.type import Resp, NodeStatus, JobStatus
 import os
 import tarfile
 
@@ -13,7 +12,7 @@ router = APIRouter(tags=["job"])
 @router.get("/cloud/job/", dependencies=[Depends(verify_setup)])
 async def job_ls(node_id: str | None = None) -> Resp:
     """monitoring: 3. cloud job ls [NODE_ID]"""
-    rtn = cluster.get_jobs(node_id)
+    rtn = cluster.get_jobs_under_node_id(node_id)
     return Resp(status=True, data=[j.toJSON() for j in rtn])
 
 
@@ -23,20 +22,24 @@ async def job_launch(job_name: str, job_id: str, job_script: UploadFile) -> Resp
     # Doing some sanity checks
     assert config["CLUSTER"] != None
     # IMPORTANT: we assume the manager won't create jobs with the same ID!
-    if len(cluster.available) == 0:
+    if not cluster.has_available_nodes():
         return Resp(
-            status=False,
-            msg=f"cluster: unexpected failure there is no available node",
+            status=False, msg=f"cluster: unexpected failure there is no available node"
         )
-    node = cluster.available.popleft()
-    if node.status != Status.IDLE:
+
+    try:
+        node = cluster.pop_available_node()
+    except Exception as e:
+        print(e)
+        return Resp(status=False, msg=f"cluster: unexpected failure {e}")
+
+    if node.get_node_status() != NodeStatus.IDLE:
         return Resp(
-            status=False,
-            msg="cluster: unexpected failure the node is not IDLE",
+            status=False, msg="cluster: unexpected failure the node is not IDLE"
         )
 
     # Passed all sanity checks, now we can prepare the job scripts
-    script_path = os.path.join("tmp", node.id)
+    script_path = os.path.join("tmp", node.get_node_id())
     os.makedirs(script_path, exist_ok=True)
     with open(os.path.join(script_path, f"{job_id}.sh"), "wb") as f:
         f.write(await job_script.read())
@@ -47,7 +50,7 @@ chmod +x {script_path+"/"+job_id}.sh
 output=$(./{script_path+"/"+job_id}.sh)
 exit_code=$?
 json_payload=$(echo '{{}}' | jq --arg output "$output" '.data = $output')
-curl -X 'POST' "http://host.docker.internal:{config["CLUSTER"].split(":")[2]}/internal/callback?job_id={job_id}&node_id={node.id}&exit_code=$exit_code" -H 'accept: application/json' -H 'Content-Type: application/json' -d "$json_payload"
+curl -X 'POST' "http://host.docker.internal:{config["CLUSTER"].split(":")[2]}/internal/callback?job_id={job_id}&node_id={node.get_node_id()}&exit_code=$exit_code" -H 'accept: application/json' -H 'Content-Type: application/json' -d "$json_payload"
 """
         f.write(script)
 
@@ -56,43 +59,49 @@ curl -X 'POST' "http://host.docker.internal:{config["CLUSTER"].split(":")[2]}/in
         tar.add(os.path.join(script_path, "launcher.sh"))
 
     # Add the job to the cluster
-    job = Job(name=job_name, id=job_id, node=node, status=Status.RUNNING)
-    status = node.add_job(job)
-    if status == False:
-        return Resp(status=False, msg=f"cluster: job id {job_id} already exist")
-    status = cluster.add_running(job)
-    if status == False:
-        return Resp(status=False, msg=f"cluster: job id {job_id} already exist")
-
-    node.status = Status.RUNNING
+    job = Job(
+        job_name=job_name,
+        job_id=job_id,
+        node_id=node.get_node_id(),
+        job_status=JobStatus.RUNNING,
+    )
+    try:
+        node.add_job(job)
+        cluster.add_running_job(job)
+        node.set_running()
+    except Exception as e:
+        print(e)
+        return Resp(status=False, msg=f"cluster: unexpected failure {e}")
 
     # Launch the job in the Docker container
-    container = dc.containers.get(node.id)
+    container = dc.containers.get(node.get_node_id())
     with open(os.path.join(script_path, f"{job_id}.tar"), "rb") as tar:
-        container.put_archive("/", tar)
+        container.put_archive("/", tar)  # type: ignore
 
     launcher = os.path.join(script_path, "launcher.sh")
-    container.exec_run(["/bin/bash", "-c", f"chmod +x {launcher}"], detach=True)
-    container.exec_run(["/bin/bash", "-c", f"{launcher}"], detach=True)
+    container.exec_run(["/bin/bash", "-c", f"chmod +x {launcher}"], detach=True)  # type: ignore
+    container.exec_run(["/bin/bash", "-c", f"{launcher}"], detach=True)  # type: ignore
 
     return Resp(
         status=True,
-        msg=f"cluster: job {job_id} launched on node {node.name}",
-        data={"node_id": node.id, "node_name": node.name},
+        msg=f"cluster: job {job_id} launched on node {node.get_node_name()}",
+        data={"node_id": node.get_node_id(), "node_name": node.get_node_name()},
     )
 
 
 @router.delete("/cloud/job/", dependencies=[Depends(verify_setup)])
 async def job_abort(job_id: str) -> Resp:
     """management: 7. cloud abort JOB_ID"""
-    # TODO: abort in Celery as well
-    job = cluster.remove_running(job_id)
-    if job == None:
-        return Resp(status=False, msg="cluster: job not found in the running list")
+    # TODO: Actually abort the job in the Docker container
+    try:
+        job = cluster.remove_running(job_id)
+        job.set_aborted()
+        node = cluster.get_node_by_id(job.get_node_id())
+        cluster.add_available_node(node)
+    except Exception as e:
+        print(e)
+        return Resp(status=False, msg=f"cluster: {e}")
 
-    job.status = Status.ABORTED
-    job.node.status = Status.IDLE
-    cluster.available.append(job.node)
     return Resp(status=True, msg=f"cluster: job {job_id} aborted")
 
 

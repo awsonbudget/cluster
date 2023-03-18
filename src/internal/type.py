@@ -2,10 +2,14 @@ from enum import Enum
 from pydantic import BaseModel
 
 
-class Status(str, Enum):
+class NodeStatus(str, Enum):
     IDLE = "idle"
     RUNNING = "running"
+
+
+class JobStatus(str, Enum):
     REGISTERED = "registered"
+    RUNNING = "running"
     COMPLETED = "completed"
     ABORTED = "aborted"
     FAILED = "failed"
