@@ -40,7 +40,12 @@ async def server_launch(pod_id: str) -> Resp:
             try:
                 container = dc.containers.get(server.get_node_id())
                 container.start()  # type: ignore
-                ports.append(server.get_port())
+                ports.append(
+                    dict(
+                        node_id=server.get_node_id(),
+                        port=server.get_port(),
+                    )
+                )
             except docker.errors.APIError as e:
                 print(e)
                 return Resp(status=False, msg=f"cluster: docker.errors.APIError")
@@ -65,7 +70,12 @@ async def server_resume(pod_id: str) -> Resp:
             try:
                 container = dc.containers.get(server.get_node_id())
                 container.start()  # type: ignore
-                ports.append(server.get_port())
+                ports.append(
+                    dict(
+                        node_id=server.get_node_id(),
+                        port=server.get_port(),
+                    )
+                )
 
             except docker.errors.APIError as e:
                 print(e)
@@ -91,7 +101,12 @@ async def server_pause(pod_id: str) -> Resp:
             try:
                 container = dc.containers.get(server.get_node_id())
                 container.stop(force=True)  # type: ignore
-                ports.append(server.get_port())
+                ports.append(
+                    dict(
+                        node_id=server.get_node_id(),
+                        port=server.get_port(),
+                    )
+                )
 
             except docker.errors.APIError as e:
                 print(e)
