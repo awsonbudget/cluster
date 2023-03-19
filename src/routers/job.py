@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, UploadFile
-from src.internal.cluster import cluster, config, Job, dc
+from src.internal.cluster import Job
+from src.utils.config import cluster, dc, address
 from src.internal.auth import verify_setup
 from src.internal.type import Resp, NodeStatus, JobStatus
 import os
@@ -20,7 +21,7 @@ async def job_ls(node_id: str | None = None) -> Resp:
 async def job_launch(job_name: str, job_id: str, job_script: UploadFile) -> Resp:
     """management: 6. cloud launch PATH_TO_JOB"""
     # Doing some sanity checks
-    assert config["CLUSTER"] != None
+    assert address["cluster"] != None
     # IMPORTANT: we assume the manager won't create jobs with the same ID!
     if not cluster.has_available_nodes():
         return Resp(
@@ -50,7 +51,7 @@ chmod +x {script_path+"/"+job_id}.sh
 output=$(./{script_path+"/"+job_id}.sh)
 exit_code=$?
 json_payload=$(echo '{{}}' | jq --arg output "$output" '.data = $output')
-curl -X 'POST' "http://host.docker.internal:{config["CLUSTER"].split(":")[2]}/internal/callback?job_id={job_id}&node_id={node.get_node_id()}&exit_code=$exit_code" -H 'accept: application/json' -H 'Content-Type: application/json' -d "$json_payload"
+curl -X 'POST' "http://host.docker.internal:{address["cluster"].split(":")[2]}/internal/callback?job_id={job_id}&node_id={node.get_node_id()}&exit_code=$exit_code" -H 'accept: application/json' -H 'Content-Type: application/json' -d "$json_payload"
 """
         f.write(script)
 

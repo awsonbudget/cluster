@@ -1,12 +1,9 @@
 from __future__ import annotations
 from src.internal.type import JobStatus, NodeStatus
 from collections import deque
-from dotenv import dotenv_values
-import docker
 import secrets
 import string
 
-dc = docker.from_env()
 alphabet = string.ascii_letters.lower() + string.digits
 
 """
@@ -271,10 +268,3 @@ class Cluster(object):
                 else:
                     rtn.extend(node.get_jobs())
         return rtn
-
-
-cluster: Cluster = Cluster()
-
-config = dotenv_values(".env")
-assert config["MANAGER"] != None
-assert config["CLUSTER"] != None

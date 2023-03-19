@@ -1,5 +1,5 @@
 {
-    "type": {
+    "cluster_type": {
         "heavy": {
             "node_limit": 10,
             "cpu": 0.8,
@@ -15,5 +15,9 @@
             "cpu": 0.3,
             "memory": 100
         }
+    },
+    "address": {
+        "cluster": "http://127.0.0.1:5001",
+        "manager": "http://127.0.0.1:5000"
     }
 }

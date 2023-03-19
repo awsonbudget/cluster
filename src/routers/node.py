@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from src.internal.type import Resp
-from src.internal.cluster import cluster, dc, Node
+from src.internal.cluster import Node
+from src.utils.config import cluster, dc
 from src.internal.auth import verify_setup
 import os
 import docker.errors

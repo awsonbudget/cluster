@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from src.internal.type import Resp
-from src.internal.cluster import Pod, cluster
+from src.internal.cluster import Pod
+from src.utils.config import cluster
 from src.internal.auth import verify_setup
 
 
