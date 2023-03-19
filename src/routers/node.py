@@ -83,20 +83,20 @@ async def node_register(
                 detach=True,
             )
         elif node_type == "server":
-            # img = dc.images.get("aob-example-express:1.0")
             port = cluster.get_available_port()
+            img = dc.images.get("aob-example-express:1.0")
             identifier = f"{cluster.get_type()}_{pod_id}_{node_name}"
-            # container = dc.containers.run(
-            #     image=img,
-            #     name=f"{pod_id}_{node_name}",
-            #     command=[
-            #         "node",
-            #         "app.js",
-            #         identifier,
-            #     ],
-            #     detach=True,
-            #     ports={3000: port},
-            # )
+            container = dc.containers.create(
+                image=img,
+                name=f"{pod_id}_{node_name}",
+                command=[
+                    "node",
+                    "app.js",
+                    identifier,
+                ],
+                detach=True,
+                ports={3000: port},
+            )
             print(f"{identifier} registered on port: {port}")
 
         assert container != None  # type: ignore

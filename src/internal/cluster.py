@@ -115,6 +115,12 @@ class Node(object):
     def set_idle(self):
         self.__node_status = JobNodeStatus.IDLE
 
+    def set_online(self):
+        self.__node_status = ServerNodeStatus.ONLINE
+
+    def set_paused(self):
+        self.__node_status = ServerNodeStatus.PAUSED
+
     def add_job(self, job: Job):
         if job.get_job_id() in self.__jobs:
             raise Exception("job already exists")
@@ -148,6 +154,11 @@ class Pod(object):
 
     def get_nodes(self) -> list[Node]:
         return list(self.__nodes.values())
+
+    def get_server_nodes(self) -> list[Node]:
+        return list(
+            filter(lambda node: node.get_node_type() == "server", self.__nodes.values())
+        )
 
     def add_node(self, node: Node):
         if node.get_node_id() in self.__nodes:
