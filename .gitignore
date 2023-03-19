@@ -161,3 +161,4 @@ cython_debug/
 
 tmp/*
 sync.sh
+config.json
