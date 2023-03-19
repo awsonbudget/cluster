@@ -100,7 +100,7 @@ async def server_pause(pod_id: str) -> Resp:
         for server in servers:
             try:
                 container = dc.containers.get(server.get_node_id())
-                container.stop(force=True)  # type: ignore
+                container.stop(timeout=2)  # type: ignore
                 ports.append(
                     dict(
                         node_id=server.get_node_id(),
