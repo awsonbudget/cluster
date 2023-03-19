@@ -1,0 +1,23 @@
+{
+    "cluster_type": {
+        "heavy": {
+            "node_limit": 10,
+            "cpu": 0.8,
+            "mem": 500
+        },
+        "medium": {
+            "node_limit": 15,
+            "cpu": 0.5,
+            "mem": 300
+        },
+        "light": {
+            "node_limit": 20,
+            "cpu": 0.3,
+            "mem": 100
+        }
+    },
+    "address": {
+        "cluster": "https://10.140.17.117",
+        "manager": "http://10.140.17.117:5001"
+    }
+}
