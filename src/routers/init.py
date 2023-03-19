@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from src.internal.type import Resp
-from src.utils.config import cluster, dc
+from src.utils.config import cluster, dc, cluster_type
 
 import shutil
 import docker.errors
@@ -29,7 +29,11 @@ async def init(type: str) -> Resp:
         except OSError as e:
             print("tmp was already cleaned")
 
-        cluster.initialize(type)
+        cluster.initialize(
+            type,
+            cpu_limit=cluster_type[type]["cpu"],
+            mem_limit=cluster_type[type]["mem"],
+        )
         return Resp(status=True, msg="cluster: setup completed")
 
     except docker.errors.APIError as e:

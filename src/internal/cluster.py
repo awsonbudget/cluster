@@ -192,16 +192,26 @@ class Cluster(object):
         self.__available_job_nodes: deque[Node] = deque()
         self.__running_job_nodes: dict[str, Job] = dict()  # key is the job id
         self.__available_port: int = 9999
+        self.__cpu_limit: float
+        self.__mem_limit: int
 
     def is_initialized(self) -> bool:
         return self.__initialized
 
-    def initialize(self, type: str):
+    def initialize(self, type: str, cpu_limit: float, mem_limit: int):
         self.__type = type
+        self.__cpu_limit = cpu_limit
+        self.__mem_limit = mem_limit
         self.__initialized = True
 
     def get_type(self) -> str:
         return self.__type
+
+    def get_cpu_limit(self) -> float:
+        return self.__cpu_limit
+
+    def get_mem_limit(self) -> int:
+        return self.__mem_limit
 
     def has_dup_pod_name(self, pod_name: str) -> bool:
         for pod in self.get_pods():

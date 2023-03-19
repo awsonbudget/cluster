@@ -8,6 +8,27 @@ import docker.errors
 router = APIRouter(tags=["server"])
 
 
+@router.get("/cloud/server/", dependencies=[Depends(verify_setup)])
+async def server_ls(pod_id: str) -> Resp:
+    """cloud server ls POD_ID"""
+    try:
+        pod = cluster.get_pod_by_id(pod_id)
+        servers = pod.get_server_nodes()
+        for server in servers:
+            try:
+                container = dc.containers.get(server.get_node_id())
+                print(container.stats(stream=False))  # type: ignore
+            except docker.errors.APIError as e:
+                print(e)
+                return Resp(status=False, msg=f"cluster: docker.errors.APIError")
+
+    except Exception as e:
+        print(e)
+        return Resp(status=False, msg=f"cluster: pod {pod_id} ls failed: {e}")
+
+    return Resp(status=True, msg="cluster: pod {pod_id} ls success")
+
+
 @router.post("/cloud/server/launch/", dependencies=[Depends(verify_setup)])
 async def server_launch(pod_id: str) -> Resp:
     """cloud server launch POD_ID"""

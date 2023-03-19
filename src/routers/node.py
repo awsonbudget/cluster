@@ -96,6 +96,9 @@ async def node_register(
                 ],
                 detach=True,
                 ports={3000: port},
+                cpu_quota=int(cluster.get_cpu_limit() * 100000),
+                cpu_period=100000,
+                mem_limit=str(cluster.get_mem_limit()) + "m",
             )
             print(f"{identifier} registered on port: {port}")
 

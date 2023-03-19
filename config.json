@@ -3,17 +3,17 @@
         "heavy": {
             "node_limit": 10,
             "cpu": 0.8,
-            "memory": 500
+            "mem": 500
         },
         "medium": {
             "node_limit": 15,
             "cpu": 0.5,
-            "memory": 300
+            "mem": 300
         },
         "light": {
             "node_limit": 20,
             "cpu": 0.3,
-            "memory": 100
+            "mem": 100
         }
     },
     "address": {
