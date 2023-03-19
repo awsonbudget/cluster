@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, UploadFile
-from src.internal.cluster import Job
+from fastapi import APIRouter, Depends
 from src.utils.config import cluster, dc, address
 from src.internal.auth import verify_setup
-from src.internal.type import Resp, NodeStatus, JobStatus
+from src.internal.type import Resp, ServerNodeStatus, JobStatus
 
 
 router = APIRouter(tags=["server"])

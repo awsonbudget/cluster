@@ -4,7 +4,7 @@ from collections import deque
 import secrets
 import string
 
-from src.internal.type import JobStatus, NodeStatus
+from src.internal.type import JobStatus, JobNodeStatus, ServerNodeStatus
 
 alphabet = string.ascii_letters.lower() + string.digits
 
@@ -77,8 +77,8 @@ class Node(object):
         self.__node_id: str = node_id
         self.__node_name: str = node_name
         self.__pod_id: str = pod_id
-        self.__node_status: NodeStatus = (
-            NodeStatus.IDLE if node_type == "job" else NodeStatus.NEW
+        self.__node_status: JobNodeStatus | ServerNodeStatus = (
+            JobNodeStatus.IDLE if node_type == "job" else ServerNodeStatus.NEW
         )
         self.__node_type: Literal["job", "server"] = node_type  # job or server
         self.__jobs: dict[str, Job] = dict()  # key is the job id
@@ -93,7 +93,7 @@ class Node(object):
     def get_pod_id(self) -> str:
         return self.__pod_id
 
-    def get_node_status(self) -> NodeStatus:
+    def get_node_status(self) -> JobNodeStatus | ServerNodeStatus:
         return self.__node_status
 
     def get_node_type(self) -> Literal["job", "server"]:
@@ -110,10 +110,10 @@ class Node(object):
         return list(self.__jobs.values())
 
     def set_running(self):
-        self.__node_status = NodeStatus.RUNNING
+        self.__node_status = JobNodeStatus.RUNNING
 
     def set_idle(self):
-        self.__node_status = NodeStatus.IDLE
+        self.__node_status = JobNodeStatus.IDLE
 
     def add_job(self, job: Job):
         if job.get_job_id() in self.__jobs:
@@ -158,8 +158,11 @@ class Pod(object):
         node = self.get_node_by_id(node_id)
         if node == None:
             raise Exception("node does not exist")
-        if node.get_node_status() != NodeStatus.IDLE:
-            raise Exception("node is not idle")
+        if (
+            node.get_node_type() == "job"
+            and node.get_node_status() != JobNodeStatus.IDLE
+        ):
+            raise Exception("job node is not idle")
         try:
             return self.__nodes.pop(node_id)
         except KeyError:
@@ -175,8 +178,8 @@ class Cluster(object):
         self.__type: str
         self.__pods: dict[str, Pod] = dict()  # key is the pod id
         self.__nodes: dict[str, Node] = dict()  # key is the node id
-        self.__available_nodes: deque[Node] = deque()
-        self.__running: dict[str, Job] = dict()  # key is the job id
+        self.__available_job_nodes: deque[Node] = deque()
+        self.__running_job_nodes: dict[str, Job] = dict()  # key is the job id
         self.__available_port: int = 9999
 
     def is_initialized(self) -> bool:
@@ -243,44 +246,47 @@ class Cluster(object):
         node = self.get_node_by_id(node_id)
         if node == None:
             raise Exception("node does not exist")
-        if node.get_node_status() != NodeStatus.IDLE:
-            raise Exception("node is not idle")
+        if (
+            node.get_node_type() == "job"
+            and node.get_node_status() != JobNodeStatus.IDLE
+        ):
+            raise Exception("job node is not idle")
         try:
             return self.__nodes.pop(node_id)
         except KeyError:
             raise Exception("node does not exist")
 
-    def add_available_node(self, node: Node):
-        self.__available_nodes.append(node)
+    def add_available_job_node(self, node: Node):
+        self.__available_job_nodes.append(node)
 
-    def has_available_nodes(self) -> bool:
+    def has_available_job_nodes(self) -> bool:
         return (
-            len(self.__available_nodes) > 0
+            len(self.__available_job_nodes) > 0
             # the below should never be false, but just in case
-            and self.__available_nodes[0].get_node_status() == NodeStatus.IDLE
+            and self.__available_job_nodes[0].get_node_status() == JobNodeStatus.IDLE
         )
 
-    def pop_available_node(self) -> Node:
-        if not self.has_available_nodes():
+    def pop_available_job_node(self) -> Node:
+        if not self.has_available_job_nodes():
             raise Exception("no available nodes")
-        return self.__available_nodes.popleft()
+        return self.__available_job_nodes.popleft()
 
-    def remove_available_node(self, node: Node):
-        self.__available_nodes.remove(node)
+    def remove_available_job_node(self, node: Node):
+        self.__available_job_nodes.remove(node)
 
     def add_running_job(self, job: Job):
-        if job.get_job_id() in self.__running:
+        if job.get_job_id() in self.__running_job_nodes:
             raise Exception("job id already exists")
-        self.__running[job.get_job_id()] = job
+        self.__running_job_nodes[job.get_job_id()] = job
 
-    def remove_running(self, job_id: str) -> Job:
+    def remove_running_job(self, job_id: str) -> Job:
         try:
-            return self.__running.pop(job_id)
+            return self.__running_job_nodes.pop(job_id)
         except KeyError:
             raise Exception(f"job with id {job_id} does not exist in the running list")
 
-    def get_jobs(self) -> list[Job]:
-        return list(self.__running.values())
+    # def get_jobs(self) -> list[Job]:
+    #     return list(self.__running_job_nodes.values())
 
     def get_jobs_under_node_id(self, node_id: str | None = None) -> list[Job]:
         rtn = []

@@ -2,10 +2,15 @@ from enum import Enum
 from pydantic import BaseModel
 
 
-class NodeStatus(str, Enum):
+class JobNodeStatus(str, Enum):
     IDLE = "idle"
-    NEW = "new"
     RUNNING = "running"
+
+
+class ServerNodeStatus(str, Enum):
+    NEW = "new"
+    ONLINE = "online"
+    PAUSED = "paused"
 
 
 class JobStatus(str, Enum):

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, UploadFile
 from src.internal.cluster import Job
 from src.utils.config import cluster, dc, address
 from src.internal.auth import verify_setup
-from src.internal.type import Resp, NodeStatus, JobStatus
+from src.internal.type import Resp, JobNodeStatus, JobStatus
 import os
 import tarfile
 
@@ -23,18 +23,18 @@ async def job_launch(job_name: str, job_id: str, job_script: UploadFile) -> Resp
     # Doing some sanity checks
     assert address["cluster"] != None
     # IMPORTANT: we assume the manager won't create jobs with the same ID!
-    if not cluster.has_available_nodes():
+    if not cluster.has_available_job_nodes():
         return Resp(
             status=False, msg=f"cluster: unexpected failure there is no available node"
         )
 
     try:
-        node = cluster.pop_available_node()
+        node = cluster.pop_available_job_node()
     except Exception as e:
         print(e)
         return Resp(status=False, msg=f"cluster: unexpected failure {e}")
 
-    if node.get_node_status() != NodeStatus.IDLE:
+    if node.get_node_status() != JobNodeStatus.IDLE:
         return Resp(
             status=False, msg="cluster: unexpected failure the node is not IDLE"
         )
@@ -95,10 +95,10 @@ async def job_abort(job_id: str) -> Resp:
     """management: 7. cloud abort JOB_ID"""
     # TODO: Actually abort the job in the Docker container
     try:
-        job = cluster.remove_running(job_id)
+        job = cluster.remove_running_job(job_id)
         job.set_aborted()
         node = cluster.get_node_by_id(job.get_node_id())
-        cluster.add_available_node(node)
+        cluster.add_available_job_node(node)
     except Exception as e:
         print(e)
         return Resp(status=False, msg=f"cluster: {e}")
