@@ -6,6 +6,11 @@ from src.routers import init, internal, job, node, pod
 app = FastAPI()
 
 
+@app.get("/ping/")
+async def ping() -> str:
+    return "pong"
+
+
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start_time = time.time()
