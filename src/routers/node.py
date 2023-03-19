@@ -114,7 +114,8 @@ async def node_register(
         try:
             pod.add_node(node)
             cluster.add_node(node)
-            cluster.add_available_job_node(node)
+            if node_type == "job":
+                cluster.add_available_job_node(node)
         except Exception as e:
             print(e)
             return Resp(status=False, msg=f"cluster: {e}")
@@ -146,7 +147,8 @@ async def node_rm(node_id: str) -> Resp:
         try:
             pod.remove_node_by_id(node.get_node_id())
             cluster.remove_node_by_id(node_id)
-            cluster.remove_available_job_node(node)
+            if node.get_node_type() == "job":
+                cluster.remove_available_job_node(node)
         except Exception as e:
             print(e)
             return Resp(status=False, msg=f"cluster: {e}")
