@@ -35,10 +35,12 @@ async def server_launch(pod_id: str) -> Resp:
     try:
         pod = cluster.get_pod_by_id(pod_id)
         servers = pod.get_server_nodes()
+        ports = []
         for server in servers:
             try:
                 container = dc.containers.get(server.get_node_id())
                 container.start()  # type: ignore
+                ports.append(server.get_port())
             except docker.errors.APIError as e:
                 print(e)
                 return Resp(status=False, msg=f"cluster: docker.errors.APIError")
@@ -49,7 +51,7 @@ async def server_launch(pod_id: str) -> Resp:
         print(e)
         return Resp(status=False, msg=f"cluster: pod {pod_id} launch failed: {e}")
 
-    return Resp(status=True, msg="cluster: pod {pod_id} launch success")
+    return Resp(status=True, msg="cluster: pod {pod_id} launch success", data=[ports])
 
 
 @router.post("/cloud/server/resume/", dependencies=[Depends(verify_setup)])
@@ -58,10 +60,12 @@ async def server_resume(pod_id: str) -> Resp:
     try:
         pod = cluster.get_pod_by_id(pod_id)
         servers = pod.get_server_nodes()
+        ports = []
         for server in servers:
             try:
                 container = dc.containers.get(server.get_node_id())
                 container.start()  # type: ignore
+                ports.append(server.get_port())
 
             except docker.errors.APIError as e:
                 print(e)
@@ -73,7 +77,7 @@ async def server_resume(pod_id: str) -> Resp:
         print(e)
         return Resp(status=False, msg=f"cluster: pod {pod_id} resume failed: {e}")
 
-    return Resp(status=True, msg="cluster: pod {pod_id} resume success")
+    return Resp(status=True, msg="cluster: pod {pod_id} resume success", data=[ports])
 
 
 @router.post("/cloud/server/pause/", dependencies=[Depends(verify_setup)])
@@ -82,10 +86,12 @@ async def server_pause(pod_id: str) -> Resp:
     try:
         pod = cluster.get_pod_by_id(pod_id)
         servers = pod.get_server_nodes()
+        ports = []
         for server in servers:
             try:
                 container = dc.containers.get(server.get_node_id())
                 container.stop(force=True)  # type: ignore
+                ports.append(server.get_port())
 
             except docker.errors.APIError as e:
                 print(e)
@@ -97,4 +103,4 @@ async def server_pause(pod_id: str) -> Resp:
         print(e)
         return Resp(status=False, msg=f"cluster: pod {pod_id} pause failed: {e}")
 
-    return Resp(status=True, msg="cluster: pod {pod_id} pause success")
+    return Resp(status=True, msg="cluster: pod {pod_id} pause success", data=[ports])
