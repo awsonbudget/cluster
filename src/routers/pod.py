@@ -17,6 +17,7 @@ async def pod_ls():
             dict(
                 pod_name=pod.get_pod_name(),
                 pod_id=pod.get_pod_id(),
+                pod_type=cluster.get_type(),
                 total_nodes=len(pod.get_nodes()),
             )
         )
@@ -46,11 +47,11 @@ async def pod_register(pod_name: str):
 
 
 @router.delete("/cloud/pod/", dependencies=[Depends(verify_setup)])
-async def pod_rm(pod_name: str):
-    """management: 3. cloud pod rm POD_NAME"""
+async def pod_rm(pod_id: str):
+    """management: 3. cloud pod rm POD_ID"""
     # Pre condition check
     try:
-        pod = cluster.get_pod_by_name(pod_name)
+        pod = cluster.get_pod_by_id(pod_id)
     except Exception as e:
         print(e)
         return Resp(status=False, msg=f"cluster: {e}")
@@ -58,7 +59,7 @@ async def pod_rm(pod_name: str):
     if len(pod.get_nodes()) > 0:
         return Resp(
             status=False,
-            msg=f"cluster: failed to remove pod {pod_name} because it has nodes inside",
+            msg=f"cluster: failed to remove pod {pod_id} because it has nodes inside",
         )
 
     # Remove pod
@@ -68,4 +69,4 @@ async def pod_rm(pod_name: str):
         print(e)
         return Resp(status=False, msg=f"cluster: {e}")
 
-    return Resp(status=True, msg=f"cluster: {pod_name} is removed from pods")
+    return Resp(status=True, msg=f"cluster: pod {pod_id} is removed from pods")
