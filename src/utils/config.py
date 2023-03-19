@@ -6,5 +6,6 @@ cluster: Cluster = Cluster()
 dc = docker.from_env()
 
 with open("config.json") as f:
-    cluster_type = json.load(f)["cluster_type"]
-    address = json.load(f)["address"]
+    config = json.load(f)
+    cluster_type = config["cluster_type"]
+    address = config["address"]

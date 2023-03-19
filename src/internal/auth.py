@@ -1,5 +1,5 @@
 from fastapi import HTTPException
-from src.internal.cluster import cluster
+from src.utils.config import cluster
 
 
 async def verify_setup():
