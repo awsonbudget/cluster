@@ -51,7 +51,7 @@ async def server_launch(pod_id: str) -> Resp:
         print(e)
         return Resp(status=False, msg=f"cluster: pod {pod_id} launch failed: {e}")
 
-    return Resp(status=True, msg="cluster: pod {pod_id} launch success", data=[ports])
+    return Resp(status=True, msg="cluster: pod {pod_id} launch success", data=ports)
 
 
 @router.post("/cloud/server/resume/", dependencies=[Depends(verify_setup)])
@@ -77,7 +77,7 @@ async def server_resume(pod_id: str) -> Resp:
         print(e)
         return Resp(status=False, msg=f"cluster: pod {pod_id} resume failed: {e}")
 
-    return Resp(status=True, msg="cluster: pod {pod_id} resume success", data=[ports])
+    return Resp(status=True, msg="cluster: pod {pod_id} resume success", data=ports)
 
 
 @router.post("/cloud/server/pause/", dependencies=[Depends(verify_setup)])
@@ -103,4 +103,4 @@ async def server_pause(pod_id: str) -> Resp:
         print(e)
         return Resp(status=False, msg=f"cluster: pod {pod_id} pause failed: {e}")
 
-    return Resp(status=True, msg="cluster: pod {pod_id} pause success", data=[ports])
+    return Resp(status=True, msg="cluster: pod {pod_id} pause success", data=ports)
