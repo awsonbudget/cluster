@@ -6,7 +6,7 @@ import docker.errors
 
 from src.internal.type import Resp
 from src.internal.cluster import Node
-from src.utils.config import cluster, dc
+from src.utils.config import cluster, dc, cluster_type
 from src.internal.auth import verify_setup
 
 
@@ -64,8 +64,17 @@ async def node_register(
             msg=f"cluster: node {node_name} already exist in pod with id {pod_id}",
         )
 
+    allowed_amount = cluster_type[cluster.get_type()]["node_limit"]
+    current_amount = len(pod.get_nodes())
+    if current_amount >= allowed_amount:
+        return Resp(
+            status=False,
+            msg=f"cluster: node limit reached for pod with id {pod_id}",
+        )
+
     try:
         container = None
+        port = None
         if node_type == "job":
             container = dc.containers.run(
                 image="ubuntu",
@@ -91,7 +100,13 @@ async def node_register(
             print(f"{identifier} registered on port: {port}")
 
         assert container != None  # type: ignore
-        node = Node(node_name=node_name, node_id=container.id[0:12], pod_id=pod_id, node_type=node_type, port=port)  # type: ignore
+        node = Node(
+            node_name=node_name,
+            node_id=container.id[0:12],  # type: ignore
+            pod_id=pod_id,
+            node_type=node_type,
+            port=port,
+        )  # type: ignore
 
         try:
             pod.add_node(node)
