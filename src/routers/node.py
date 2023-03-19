@@ -1,10 +1,13 @@
+import os
+from typing import Literal
+
 from fastapi import APIRouter, Depends
+import docker.errors
+
 from src.internal.type import Resp
 from src.internal.cluster import Node
 from src.utils.config import cluster, dc
 from src.internal.auth import verify_setup
-import os
-import docker.errors
 
 
 router = APIRouter(tags=["node"])
@@ -19,6 +22,7 @@ async def node_ls(pod_id: str | None = None) -> Resp:
             for node in pod.get_nodes():
                 rtn.append(
                     dict(
+                        node_type=node.get_node_type(),
                         node_name=node.get_node_name(),
                         node_id=node.get_node_id(),
                         node_status=node.get_node_status(),
@@ -35,6 +39,7 @@ async def node_ls(pod_id: str | None = None) -> Resp:
     for node in pod.get_nodes():
         rtn.append(
             dict(
+                node_type=node.get_node_type(),
                 node_name=node.get_node_name(),
                 node_id=node.get_node_id(),
                 node_status=node.get_node_status(),
@@ -45,7 +50,9 @@ async def node_ls(pod_id: str | None = None) -> Resp:
 
 
 @router.post("/cloud/node/", dependencies=[Depends(verify_setup)])
-async def node_register(node_name: str, pod_id: str) -> Resp:
+async def node_register(
+    node_name: str, node_type: Literal["job", "server"], pod_id: str
+) -> Resp:
     """management: 4. cloud register NODE_NAME [POD_ID]"""
     pod = cluster.get_pod_by_id(pod_id)
     if pod == None:
@@ -58,14 +65,33 @@ async def node_register(node_name: str, pod_id: str) -> Resp:
         )
 
     try:
-        container = dc.containers.run(
-            image="ubuntu",
-            name=f"{pod_id}_{node_name}",
-            command=["tail", "-f", "/dev/null"],  # keep it running
-            detach=True,
-        )
-        assert container.id != None  # type: ignore
-        node = Node(node_name=node_name, node_id=container.id[0:12], pod_id=pod_id)  # type: ignore
+        container = None
+        if node_type == "job":
+            container = dc.containers.run(
+                image="ubuntu",
+                name=f"{pod_id}_{node_name}",
+                command=["tail", "-f", "/dev/null"],  # keep it running
+                detach=True,
+            )
+        elif node_type == "server":
+            # img = dc.images.get("aob-example-express:1.0")
+            port = cluster.get_available_port()
+            identifier = f"{cluster.get_type()}_{pod_id}_{node_name}"
+            # container = dc.containers.run(
+            #     image=img,
+            #     name=f"{pod_id}_{node_name}",
+            #     command=[
+            #         "node",
+            #         "app.js",
+            #         identifier,
+            #     ],
+            #     detach=True,
+            #     ports={3000: port},
+            # )
+            print(f"{identifier} registered on port: {port}")
+
+        assert container != None  # type: ignore
+        node = Node(node_name=node_name, node_id=container.id[0:12], pod_id=pod_id, node_type=node_type, port=port)  # type: ignore
 
         try:
             pod.add_node(node)

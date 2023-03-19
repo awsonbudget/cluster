@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 class NodeStatus(str, Enum):
     IDLE = "idle"
+    NEW = "new"
     RUNNING = "running"
 
 

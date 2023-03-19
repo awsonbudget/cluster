@@ -1,8 +1,10 @@
 from __future__ import annotations
-from src.internal.type import JobStatus, NodeStatus
+from typing import Literal
 from collections import deque
 import secrets
 import string
+
+from src.internal.type import JobStatus, NodeStatus
 
 alphabet = string.ascii_letters.lower() + string.digits
 
@@ -64,12 +66,23 @@ class Job(object):
 
 
 class Node(object):
-    def __init__(self, node_name: str, node_id: str, pod_id: str):
+    def __init__(
+        self,
+        node_name: str,
+        node_id: str,
+        pod_id: str,
+        node_type: Literal["job", "server"],
+        port: int | None = None,
+    ):
         self.__node_id: str = node_id
         self.__node_name: str = node_name
         self.__pod_id: str = pod_id
-        self.__node_status = NodeStatus.IDLE
+        self.__node_status: NodeStatus = (
+            NodeStatus.IDLE if node_type == "job" else NodeStatus.NEW
+        )
+        self.__node_type: Literal["job", "server"] = node_type  # job or server
         self.__jobs: dict[str, Job] = dict()  # key is the job id
+        self.__port: int | None = port
 
     def get_node_id(self) -> str:
         return self.__node_id
@@ -82,6 +95,16 @@ class Node(object):
 
     def get_node_status(self) -> NodeStatus:
         return self.__node_status
+
+    def get_node_type(self) -> Literal["job", "server"]:
+        return self.__node_type
+
+    def get_port(self) -> int:
+        if self.__node_type == "job":
+            raise Exception("job node does not have a port")
+        if self.__port is None:
+            raise Exception("server node port is not set somehow")
+        return self.__port
 
     def get_jobs(self) -> list[Job]:
         return list(self.__jobs.values())
@@ -154,6 +177,7 @@ class Cluster(object):
         self.__nodes: dict[str, Node] = dict()  # key is the node id
         self.__available_nodes: deque[Node] = deque()
         self.__running: dict[str, Job] = dict()  # key is the job id
+        self.__available_port: int = 9999
 
     def is_initialized(self) -> bool:
         return self.__initialized
@@ -268,3 +292,7 @@ class Cluster(object):
                 else:
                     rtn.extend(node.get_jobs())
         return rtn
+
+    def get_available_port(self) -> int:
+        self.__available_port += 1
+        return self.__available_port

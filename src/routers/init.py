@@ -17,6 +17,7 @@ async def init(type: str) -> Resp:
 
     try:
         dc.images.pull("ubuntu")  # Assume all containers run on Ubuntu
+        dc.images.build(path="example/express", tag="aob-example-express:1.0")
 
         # TODO: do some filtering instead of wiping everything
         for container in dc.containers.list(all=True):
