@@ -152,6 +152,7 @@ class Pod(object):
 class Cluster(object):
     def __init__(self):
         self.__initialized: bool = False
+        self.__type: str
         self.__pods: dict[str, Pod] = dict()  # key is the pod id
         self.__nodes: dict[str, Node] = dict()  # key is the node id
         self.__available_nodes: deque[Node] = deque()
@@ -160,8 +161,12 @@ class Cluster(object):
     def is_initialized(self) -> bool:
         return self.__initialized
 
-    def initialize(self):
+    def initialize(self, type: str):
+        self.__type = type
         self.__initialized = True
+
+    def get_type(self) -> str:
+        return self.__type
 
     def has_dup_pod_name(self, pod_name: str) -> bool:
         for pod in self.get_pods():

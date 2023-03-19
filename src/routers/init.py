@@ -9,7 +9,7 @@ router = APIRouter(tags=["init"])
 
 
 @router.post("/cloud/")
-async def init() -> Resp:
+async def init(type: str) -> Resp:
     """management: 1. cloud init"""
     if cluster.is_initialized() == True:
         return Resp(status=True, msg="cluster: warning already initialized")
@@ -27,7 +27,7 @@ async def init() -> Resp:
         except OSError as e:
             print("tmp was already cleaned")
 
-        cluster.initialize()
+        cluster.initialize(type)
         return Resp(status=True, msg="cluster: setup completed")
 
     except docker.errors.APIError as e:
