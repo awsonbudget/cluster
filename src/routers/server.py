@@ -9,24 +9,45 @@ router = APIRouter(tags=["server"])
 
 
 @router.get("/cloud/server/", dependencies=[Depends(verify_setup)])
-async def server_ls(pod_id: str) -> Resp:
+async def server_ls(pod_id: str, node_id: str | None = None) -> Resp:
     """cloud server ls POD_ID"""
     try:
         pod = cluster.get_pod_by_id(pod_id)
         servers = pod.get_server_nodes()
+        data = {}
         for server in servers:
+            if node_id != None and node_id != server.get_node_id():
+                continue
             try:
                 container = dc.containers.get(server.get_node_id())
-                print(container.stats(stream=False))  # type: ignore
+                stats = container.stats(stream=False)  # type: ignore
+                cpu_usage: float = (
+                    stats["cpu_stats"]["cpu_usage"]["total_usage"]
+                    / stats["cpu_stats"]["system_cpu_usage"]
+                )  # percentage
+                mem_usage: int = stats["memory_stats"]["usage"]  # bytes
+                network_in: int = stats["networks"]["eth0"]["rx_bytes"]
+                network_out: int = stats["networks"]["eth0"]["tx_bytes"]
+                data[server.get_node_id()] = (
+                    {
+                        "cpu_usage": cpu_usage,
+                        "mem_usage": mem_usage,
+                        "network_in": network_in,
+                        "network_out": network_out,
+                    },
+                )
+                print(server.get_node_id())
+                print(cpu_usage, mem_usage, network_in, network_out)
+
             except docker.errors.APIError as e:
                 print(e)
                 return Resp(status=False, msg=f"cluster: docker.errors.APIError")
 
+        return Resp(status=True, data=data)
+
     except Exception as e:
         print(e)
         return Resp(status=False, msg=f"cluster: pod {pod_id} ls failed: {e}")
-
-    return Resp(status=True, msg="cluster: pod {pod_id} ls success")
 
 
 @router.post("/cloud/server/launch/", dependencies=[Depends(verify_setup)])
