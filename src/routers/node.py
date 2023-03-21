@@ -144,11 +144,14 @@ async def node_rm(node_id: str) -> Resp:
     try:
         dc.api.remove_container(container=node_id, force=True)
 
+        data = {"delete": False}
         try:
             pod.remove_node_by_id(node.get_node_id())
             cluster.remove_node_by_id(node_id)
             if node.get_node_type() == "job":
                 cluster.remove_available_job_node(node)
+            else:
+                data["delete"] = True
         except Exception as e:
             print(e)
             return Resp(status=False, msg=f"cluster: {e}")
@@ -156,6 +159,7 @@ async def node_rm(node_id: str) -> Resp:
         return Resp(
             status=True,
             msg=f"cluster: node {node.get_node_name()} removed in pod {node.get_pod_id()}",
+            data=data,
         )
     except docker.errors.APIError as e:
         print(e)
