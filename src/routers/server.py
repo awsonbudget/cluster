@@ -71,6 +71,9 @@ async def server_launch(pod_id: str) -> Resp:
         for server in servers:
             try:
                 container = dc.containers.get(server.get_node_id())
+                print(container.status)
+                if container.status == "running":
+                    continue
                 container.start()  # type: ignore
                 ports.append(
                     dict(
@@ -101,6 +104,9 @@ async def server_resume(pod_id: str) -> Resp:
         for server in servers:
             try:
                 container = dc.containers.get(server.get_node_id())
+                print(container.status)
+                if container.status == "running":
+                    continue
                 container.start()  # type: ignore
                 ports.append(
                     dict(
@@ -132,6 +138,9 @@ async def server_pause(pod_id: str) -> Resp:
         for server in servers:
             try:
                 container = dc.containers.get(server.get_node_id())
+                print(container.status)
+                if container.status == "exited":
+                    continue
                 container.stop(timeout=2)  # type: ignore
                 ports.append(
                     dict(
