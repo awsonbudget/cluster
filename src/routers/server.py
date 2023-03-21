@@ -9,7 +9,7 @@ router = APIRouter(tags=["server"])
 
 
 def calculate_cpu_percent(d) -> float:
-    cpu_count = len(d["cpu_stats"]["online_cpus"])
+    cpu_count = d["cpu_stats"]["online_cpus"]
     cpu_percent = 0.0
     cpu_delta = float(d["cpu_stats"]["cpu_usage"]["total_usage"]) - float(
         d["precpu_stats"]["cpu_usage"]["total_usage"]
