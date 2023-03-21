@@ -23,8 +23,8 @@ def calculate_cpu_percent(d) -> float:
 
 
 @router.get("/cloud/server/", dependencies=[Depends(verify_setup)])
-async def server_ls(pod_id: str, node_id: str | None = None) -> Resp:
-    """cloud server ls POD_ID"""
+async def server_stat(pod_id: str, node_id: str | None = None) -> Resp:
+    """cloud server stat POD_ID [NODE_ID]"""
     try:
         pod = cluster.get_pod_by_id(pod_id)
         servers = pod.get_server_nodes()
