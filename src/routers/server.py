@@ -8,6 +8,20 @@ import docker.errors
 router = APIRouter(tags=["server"])
 
 
+def calculate_cpu_percent(d) -> float:
+    cpu_count = len(d["cpu_stats"]["cpu_usage"]["percpu_usage"])
+    cpu_percent = 0.0
+    cpu_delta = float(d["cpu_stats"]["cpu_usage"]["total_usage"]) - float(
+        d["precpu_stats"]["cpu_usage"]["total_usage"]
+    )
+    system_delta = float(d["cpu_stats"]["system_cpu_usage"]) - float(
+        d["precpu_stats"]["system_cpu_usage"]
+    )
+    if system_delta > 0.0:
+        cpu_percent = cpu_delta / system_delta * 100.0 * cpu_count
+    return cpu_percent
+
+
 @router.get("/cloud/server/", dependencies=[Depends(verify_setup)])
 async def server_ls(pod_id: str, node_id: str | None = None) -> Resp:
     """cloud server ls POD_ID"""
@@ -21,10 +35,7 @@ async def server_ls(pod_id: str, node_id: str | None = None) -> Resp:
             try:
                 container = dc.containers.get(server.get_node_id())
                 stats = container.stats(stream=False)  # type: ignore
-                cpu_usage: float = (
-                    stats["cpu_stats"]["cpu_usage"]["total_usage"]
-                    / stats["cpu_stats"]["system_cpu_usage"]
-                )  # percentage
+                cpu_usage: float = calculate_cpu_percent(stats)  # percentage
                 mem_usage: int = stats["memory_stats"]["usage"]  # bytes
                 network_in: int = stats["networks"]["eth0"]["rx_bytes"]
                 network_out: int = stats["networks"]["eth0"]["tx_bytes"]
