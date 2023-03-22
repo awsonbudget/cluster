@@ -1,4 +1,4 @@
-import requests
+import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from src.internal.type import Resp
@@ -33,11 +33,12 @@ async def callback(job_id: str, node_id: str, exit_code: str, log: Log) -> Resp:
     with open(f"tmp/{node_id}/{job_id}.log", "w") as f:
         f.write(log.data if log.data else "")
 
-    requests.post(
-        address["manager"] + "/internal/callback/",
-        params={"job_id": job_id},
-        verify=False,
-    )
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            address["manager"] + "/internal/callback/",
+            params={"job_id": job_id},
+        )
+        print(r)
 
     return Resp(status=True)
 
