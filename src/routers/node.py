@@ -76,12 +76,18 @@ async def node_register(
         container = None
         port = None
         if node_type == "job":
-            container = dc.containers.run(
+            container = dc.api.create_container(
                 image="ubuntu",
                 name=f"{pod_id}_{node_name}",
                 command=["tail", "-f", "/dev/null"],  # keep it running
                 detach=True,
+                host_config=dc.api.create_host_config(
+                    extra_hosts={"host.docker.internal": "host-gateway"}
+                ),
             )
+            print("ID: " + container.get("Id"))
+            container = dc.containers.get(container.get("Id"))
+            container.start()
         elif node_type == "server":
             port = cluster.get_available_port()
             img = dc.images.get("aob-example-express:1.0")
