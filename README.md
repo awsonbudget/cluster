@@ -15,4 +15,4 @@ In order to run the cluster, you need 1 command:
 
 ## McGill VM
 
-- `uvicorn src.main:app --port 5001 --host 10.140.17.118`
+- `uvicorn src.main:app --port 5001 --host 0.0.0.0`
