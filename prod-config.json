@@ -1,18 +1,18 @@
 {
     "cluster_type": {
         "heavy": {
-            "node_limit": 10,
-            "cpu": 0.8,
+            "node_limit": 3,
+            "cpu": 0.33,
             "mem": 500
         },
         "medium": {
-            "node_limit": 15,
-            "cpu": 0.5,
+            "node_limit": 5,
+            "cpu": 0.20,
             "mem": 300
         },
         "light": {
-            "node_limit": 20,
-            "cpu": 0.3,
+            "node_limit": 10,
+            "cpu": 0.10,
             "mem": 100
         }
     },
