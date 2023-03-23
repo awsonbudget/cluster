@@ -139,6 +139,7 @@ class Pod(object):
         self.__pod_name: str = pod_name
         self.__pod_id: str = "".join(secrets.choice(alphabet) for _ in range(12))
         self.__nodes: dict[str, Node] = dict()  # key is the node id
+        self.__cpu_percent_cap: float
 
     def get_pod_name(self) -> str:
         return self.__pod_name
@@ -179,6 +180,12 @@ class Pod(object):
         except KeyError:
             raise Exception("node does not exist")
 
+    def set_cpu_percent_cap(self, cpu_percent_cap: float):
+        self.__cpu_percent_cap = cpu_percent_cap
+
+    def get_cpu_percent_cap(self) -> float:
+        return self.__cpu_percent_cap
+
     def toJSON(self) -> dict:
         return {"pod_name": self.__pod_name, "pod_id": self.__pod_id}
 
@@ -194,6 +201,7 @@ class Cluster(object):
         self.__available_port: int = 9999
         self.__cpu_limit: float
         self.__mem_limit: int
+        self.__cpu_available: int
 
     def is_initialized(self) -> bool:
         return self.__initialized
@@ -323,3 +331,9 @@ class Cluster(object):
     def get_available_port(self) -> int:
         self.__available_port += 1
         return self.__available_port
+
+    def set_cpu_available(self, cpu_available: int):
+        self.__cpu_available = cpu_available
+
+    def get_cpu_available(self) -> int:
+        return self.__cpu_available

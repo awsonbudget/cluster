@@ -8,7 +8,7 @@ import docker.errors
 router = APIRouter(tags=["server"])
 
 
-def calculate_cpu_percent(d) -> float:
+def calculate_cpu_percent(d, cap) -> float:
     cpu_count = d["cpu_stats"]["online_cpus"]
     cpu_percent = 0.0
     cpu_delta = float(d["cpu_stats"]["cpu_usage"]["total_usage"]) - float(
@@ -19,7 +19,7 @@ def calculate_cpu_percent(d) -> float:
     )
     if system_delta > 0.0:
         cpu_percent = cpu_delta / system_delta * 100.0 * cpu_count
-    return cpu_percent
+    return cpu_percent / cap
 
 
 @router.get("/cloud/server/", dependencies=[Depends(verify_setup)])
@@ -35,7 +35,9 @@ async def server_stat(pod_id: str, node_id: str | None = None) -> Resp:
             try:
                 container = dc.containers.get(server.get_node_id())
                 stats = container.stats(stream=False)  # type: ignore
-                cpu_usage: float = calculate_cpu_percent(stats)  # percentage
+                cpu_usage: float = calculate_cpu_percent(
+                    stats, pod.get_cpu_percent_cap()
+                )  # percentage
                 mem_usage: int = stats["memory_stats"]["usage"]  # bytes
                 network_in: int = stats["networks"]["eth0"]["rx_bytes"]
                 network_out: int = stats["networks"]["eth0"]["tx_bytes"]
@@ -86,6 +88,13 @@ async def server_launch(pod_id: str) -> Resp:
                 return Resp(status=False, msg=f"cluster: docker.errors.APIError")
 
             server.set_online()
+            pod.set_cpu_percent_cap(
+                min(cluster.get_cpu_limit(), cluster.get_cpu_available() / len(servers))
+            )
+            print(f"Launching {len(servers)} servers!")
+            print(f"Config cap: {cluster.get_cpu_limit()}")
+            print(f"Available cap: {cluster.get_cpu_available()/ len(servers)}")
+            print(f"Final decision: {pod.get_cpu_percent_cap()}")
 
     except Exception as e:
         print(e)

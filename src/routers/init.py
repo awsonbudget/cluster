@@ -34,6 +34,9 @@ async def init(type: str) -> Resp:
             cpu_limit=cluster_type[type]["cpu"],
             mem_limit=cluster_type[type]["mem"],
         )
+
+        cluster.set_cpu_available(int(dc.info()["NCPU"]))
+        print(f"Docker CPU available: {dc.info()['NCPU']}")
         return Resp(status=True, msg="cluster: setup completed")
 
     except docker.errors.APIError as e:
