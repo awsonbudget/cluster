@@ -29,6 +29,33 @@ app.get("/factorial/:n", (req, res) => {
   res.send(`${argument}: The factorial of ${n} is ${result}`);
 });
 
+function generateRandomString(length) {
+  let result = "";
+  const characters =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  for (let i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  return result;
+}
+
+function sortRandomStrings(numStrings, stringLength) {
+  const strings = [];
+  for (let i = 0; i < numStrings; i++) {
+    strings.push(generateRandomString(stringLength));
+  }
+  return strings.sort();
+}
+
+app.get("/sort/:numStrings/:stringLength", (req, res) => {
+  const numStrings = parseInt(req.params.numStrings);
+  const stringLength = parseInt(req.params.stringLength);
+  const sortedStrings = sortRandomStrings(numStrings, stringLength);
+  res.send(
+    `Generated and sorted ${numStrings} strings of length ${stringLength}`
+  );
+});
+
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
 });
