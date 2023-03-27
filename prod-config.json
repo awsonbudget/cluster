@@ -17,7 +17,7 @@
         }
     },
     "address": {
-        "cluster": "http://10.140.17.117:5001",
-        "manager": "https://10.140.17.117"
+        "cluster": "http://0.0.0.0:5001",
+        "manager": "https://winter2023-comp598-group06-02.cs.mcgill.ca/"
     }
 }
