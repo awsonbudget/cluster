@@ -58,6 +58,12 @@ async def node_register(
     if pod == None:
         return Resp(status=False, msg=f"cluster: pod with id {pod_id} does not exist")
 
+    if pod.get_is_elastic() == True and node_type == "job":
+        return Resp(
+            status=False,
+            msg=f"cluster: elastic pod does not support job node, disable elasticity first",
+        )
+
     if cluster.has_dup_node_name(node_name, pod_id):
         return Resp(
             status=False,
@@ -87,7 +93,7 @@ async def node_register(
             )
             print("ID: " + container.get("Id"))
             container = dc.containers.get(container.get("Id"))
-            container.start()
+            container.start()  # type: ignore
         elif node_type == "server":
             port = cluster.get_available_port()
             img = dc.images.get("aob-example-express:1.0")

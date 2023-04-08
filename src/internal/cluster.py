@@ -140,6 +140,11 @@ class Pod(object):
         self.__pod_id: str = "".join(secrets.choice(alphabet) for _ in range(12))
         self.__nodes: dict[str, Node] = dict()  # key is the node id
         self.__cpu_percent_cap: float
+        self.__is_elastic: bool = False
+        self.__lower_threshold: int = 20
+        self.__upper_threshold: int = 80
+        self.__min_nodes: int = 0
+        self.__max_nodes: int = 0
 
     def get_pod_name(self) -> str:
         return self.__pod_name
@@ -185,6 +190,36 @@ class Pod(object):
 
     def get_cpu_percent_cap(self) -> float:
         return self.__cpu_percent_cap
+
+    def set_is_elastic(self, is_elastic: bool):
+        self.__is_elastic = is_elastic
+
+    def get_is_elastic(self) -> bool:
+        return self.__is_elastic
+
+    def set_min_nodes(self, min_nodes: int):
+        self.__min_nodes = min_nodes
+
+    def get_min_nodes(self) -> int:
+        return self.__min_nodes
+
+    def set_max_nodes(self, max_nodes: int):
+        self.__max_nodes = max_nodes
+
+    def get_max_nodes(self) -> int:
+        return self.__max_nodes
+
+    def get_lower_threshold(self) -> int:
+        return self.__lower_threshold
+
+    def get_upper_threshold(self) -> int:
+        return self.__upper_threshold
+
+    def set_lower_threshold(self, lower_threshold: int):
+        self.__lower_threshold = lower_threshold
+
+    def set_upper_threshold(self, upper_threshold: int):
+        self.__upper_threshold = upper_threshold
 
     def toJSON(self) -> dict:
         return {"pod_name": self.__pod_name, "pod_id": self.__pod_id}

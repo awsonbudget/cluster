@@ -19,6 +19,9 @@ async def load_monitor():
             print(f"{datetime.now()} - Load monitor is running")
 
             for pod in cluster.get_pods():
+                if pod.get_is_elastic() == False:
+                    continue
+
                 total = 0
                 usage = 0
                 for server in pod.get_server_nodes():
@@ -41,14 +44,13 @@ async def load_monitor():
 
                 average = usage / total
 
-                if average > 80:
+                if average > pod.get_upper_threshold():
                     print(
                         f"Pod {pod.get_pod_id()} is experiencing high load, {average}%"
                     )
                     print("Trying to scale up...")
-                    allowed_amount = cluster_type[cluster.get_type()]["node_limit"]
                     current_amount = len(pod.get_nodes())
-                    if current_amount >= allowed_amount:
+                    if current_amount >= pod.get_max_nodes():
                         print("Cannot scale up, reached maximum pod node limit")
                         continue
 
@@ -90,14 +92,14 @@ async def load_monitor():
                             print("Failed to add a new server node")
                             print(resp["msg"])
 
-                elif average < 20:
+                elif average < pod.get_lower_threshold():
                     print(
                         f"Pod {pod.get_pod_id()} is experiencing low load, {average}%"
                     )
                     print("Trying to scale down...")
                     current_amount = len(pod.get_server_nodes())
-                    if current_amount <= 1:
-                        print("Cannot scale down, this is the last node in the pod")
+                    if current_amount <= pod.get_min_nodes():
+                        print("Cannot scale down, reached minimum pod node limit")
                         continue
 
                     async with httpx.AsyncClient(base_url=address["manager"]) as client:
