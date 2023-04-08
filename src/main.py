@@ -1,7 +1,10 @@
-from __future__ import annotations
-from fastapi import FastAPI, Request
+import asyncio
 import time
+
+from fastapi import FastAPI, Request
+
 from src.routers import init, internal, job, server, node, pod
+from src.internal.monitor import load_monitor
 
 app = FastAPI()
 
@@ -18,6 +21,11 @@ async def add_process_time_header(request: Request, call_next):
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
     return response
+
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(load_monitor())
 
 
 app.include_router(init.router)

@@ -197,7 +197,7 @@ class Cluster(object):
         self.__pods: dict[str, Pod] = dict()  # key is the pod id
         self.__nodes: dict[str, Node] = dict()  # key is the node id
         self.__available_job_nodes: deque[Node] = deque()
-        self.__running_job_nodes: dict[str, Job] = dict()  # key is the job id
+        self.__running_job: dict[str, Job] = dict()  # key is the job id
         self.__available_port: int = 9999
         self.__cpu_limit: float
         self.__mem_limit: int
@@ -304,13 +304,13 @@ class Cluster(object):
         self.__available_job_nodes.remove(node)
 
     def add_running_job(self, job: Job):
-        if job.get_job_id() in self.__running_job_nodes:
+        if job.get_job_id() in self.__running_job:
             raise Exception("job id already exists")
-        self.__running_job_nodes[job.get_job_id()] = job
+        self.__running_job[job.get_job_id()] = job
 
     def remove_running_job(self, job_id: str) -> Job:
         try:
-            return self.__running_job_nodes.pop(job_id)
+            return self.__running_job.pop(job_id)
         except KeyError:
             raise Exception(f"job with id {job_id} does not exist in the running list")
 

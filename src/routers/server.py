@@ -2,24 +2,11 @@ from fastapi import APIRouter, Depends
 from src.utils.config import cluster, dc
 from src.internal.auth import verify_setup
 from src.internal.type import Resp
+from src.utils.calculate import calculate_cpu_percent
 import docker.errors
 
 
 router = APIRouter(tags=["server"])
-
-
-def calculate_cpu_percent(d, cap) -> float:
-    cpu_count = d["cpu_stats"]["online_cpus"]
-    cpu_percent = 0.0
-    cpu_delta = float(d["cpu_stats"]["cpu_usage"]["total_usage"]) - float(
-        d["precpu_stats"]["cpu_usage"]["total_usage"]
-    )
-    system_delta = float(d["cpu_stats"]["system_cpu_usage"]) - float(
-        d["precpu_stats"]["system_cpu_usage"]
-    )
-    if system_delta > 0.0:
-        cpu_percent = cpu_delta / system_delta * 100.0 * cpu_count
-    return cpu_percent / cap
 
 
 @router.get("/cloud/server/", dependencies=[Depends(verify_setup)])
@@ -49,8 +36,8 @@ async def server_stat(pod_id: str, node_id: str | None = None) -> Resp:
                         "network_out": network_out,
                     },
                 )
-                print(server.get_node_id())
-                print(cpu_usage, mem_usage, network_in, network_out)
+                # print(server.get_node_id())
+                # print(cpu_usage, mem_usage, network_in, network_out)
 
             except docker.errors.APIError as e:
                 print(e)
@@ -73,8 +60,8 @@ async def server_launch(pod_id: str) -> Resp:
         for server in servers:
             try:
                 container = dc.containers.get(server.get_node_id())
-                print(container.status)
-                if container.status == "running":
+                print(container.status)  # type: ignore
+                if container.status == "running":  # type: ignore
                     continue
                 container.start()  # type: ignore
                 ports.append(
@@ -113,8 +100,8 @@ async def server_resume(pod_id: str) -> Resp:
         for server in servers:
             try:
                 container = dc.containers.get(server.get_node_id())
-                print(container.status)
-                if container.status == "running":
+                print(container.status)  # type: ignore
+                if container.status == "running":  # type: ignore
                     continue
                 container.start()  # type: ignore
                 ports.append(
@@ -147,8 +134,8 @@ async def server_pause(pod_id: str) -> Resp:
         for server in servers:
             try:
                 container = dc.containers.get(server.get_node_id())
-                print(container.status)
-                if container.status == "exited":
+                print(container.status)  # type: ignore
+                if container.status == "exited":  # type: ignore
                     continue
                 container.stop(timeout=2)  # type: ignore
                 ports.append(
