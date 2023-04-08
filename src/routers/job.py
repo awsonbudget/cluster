@@ -86,7 +86,11 @@ curl -X 'POST' "http://host.docker.internal:{address["cluster"].split(":")[2]}/i
     return Resp(
         status=True,
         msg=f"cluster: job {job_id} launched on node {node.get_node_name()}",
-        data={"node_id": node.get_node_id(), "node_name": node.get_node_name()},
+        data={
+            "node_id": node.get_node_id(),
+            "node_name": node.get_node_name(),
+            "pod_id": node.get_pod_id(),
+        },
     )
 
 
