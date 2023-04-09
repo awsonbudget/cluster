@@ -47,7 +47,7 @@ async def enable(pod_id: str, min_node: int, max_node: int) -> Resp:
                 resp = (
                     await client.delete(
                         "/cloud/node/",
-                        params={s
+                        params={
                             "node_id": node.get_node_id(),
                         },
                     )
