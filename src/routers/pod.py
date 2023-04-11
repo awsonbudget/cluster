@@ -18,6 +18,8 @@ async def pod_ls():
                 pod_name=pod.get_pod_name(),
                 pod_id=pod.get_pod_id(),
                 pod_type=cluster.get_type(),
+                is_elastic=pod.get_is_elastic(),
+                usage=pod.get_usage(),
                 total_nodes=len(pod.get_nodes()),
             )
         )

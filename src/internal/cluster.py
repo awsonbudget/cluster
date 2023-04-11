@@ -186,6 +186,7 @@ class Pod(object):
         self.__nodes: dict[str, ServerNode | JobNode] = dict()  # key is the node id
         self.__cpu_percent_cap: float
         self.__is_elastic: bool = False
+        self.__usage: float = 0.0
         self.__lower_threshold: int = 20
         self.__upper_threshold: int = 80
         self.__min_nodes: int = 0
@@ -260,6 +261,12 @@ class Pod(object):
 
     def set_upper_threshold(self, upper_threshold: int):
         self.__upper_threshold = upper_threshold
+
+    def get_usage(self) -> float:
+        return self.__usage
+
+    def set_usage(self, usage: float):
+        self.__usage = usage
 
     def toJSON(self) -> dict:
         return {"pod_name": self.__pod_name, "pod_id": self.__pod_id}

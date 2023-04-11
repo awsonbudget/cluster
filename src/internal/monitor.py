@@ -45,14 +45,15 @@ async def load_monitor():
                     except docker.errors.APIError as e:
                         print(e)
 
-                if not pod.get_is_elastic():
-                    continue
-
                 if total == 0:
                     print("No active server nodes found")
                     continue
 
                 average = usage / total
+                pod.set_usage(average)
+
+                if not pod.get_is_elastic():
+                    continue
 
                 if average > pod.get_upper_threshold():
                     print(
