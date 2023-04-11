@@ -1,5 +1,6 @@
 #!/bin/bash
 rm -rf data.etcd
+export ETCDCTL_API=3
 
 if [ $# -eq 0 ]
 then
@@ -16,6 +17,7 @@ HOST_1=10.140.17.116
 HOST_2=10.140.17.117 
 HOST_3=10.140.17.118 
 CLUSTER=${NAME_1}=http://${HOST_1}:2380,${NAME_2}=http://${HOST_2}:2380,${NAME_3}=http://${HOST_3}:2380
+export ENDPOINTS=$HOST_1:2379,$HOST_2:2379,$HOST_3:2379
 
 if [ $1 -eq 1 ]
 then
