@@ -1,4 +1,6 @@
 #!/bin/bash
+rm -rf data.etcd
+
 if [ $# -eq 0 ]
 then
     echo "Usage: $0 MACHINE_NUM"
@@ -34,6 +36,8 @@ else
     echo "MACHINE_NUM out of bound"
     exit 1
 fi
+
+echo "Starting etcd on ${THIS_NAME} with IP ${THIS_IP}"
 
 etcd --data-dir=data.etcd --name ${THIS_NAME} \
 	--initial-advertise-peer-urls http://${THIS_IP}:2380 --listen-peer-urls http://${THIS_IP}:2380 \
