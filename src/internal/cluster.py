@@ -72,17 +72,11 @@ class Node(object):
         node_id: str,
         pod_id: str,
         node_type: Literal["job", "server"],
-        port: int | None = None,
     ):
         self.__node_id: str = node_id
         self.__node_name: str = node_name
         self.__pod_id: str = pod_id
-        self.__node_status: JobNodeStatus | ServerNodeStatus = (
-            JobNodeStatus.IDLE if node_type == "job" else ServerNodeStatus.NEW
-        )
-        self.__node_type: Literal["job", "server"] = node_type  # job or server
-        self.__jobs: dict[str, Job] = dict()  # key is the job id
-        self.__port: int | None = port
+        self.__node_type: Literal["job", "server"] = node_type
 
     def get_node_id(self) -> str:
         return self.__node_id
@@ -93,21 +87,18 @@ class Node(object):
     def get_pod_id(self) -> str:
         return self.__pod_id
 
-    def get_node_status(self) -> JobNodeStatus | ServerNodeStatus:
-        return self.__node_status
-
     def get_node_type(self) -> Literal["job", "server"]:
         return self.__node_type
 
-    def get_port(self) -> int:
-        if self.__node_type == "job":
-            raise Exception("job node does not have a port")
-        if self.__port is None:
-            raise Exception("server node port is not set somehow")
-        return self.__port
 
-    def get_jobs(self) -> list[Job]:
-        return list(self.__jobs.values())
+class JobNode(Node):
+    def __init__(self, node_name: str, node_id: str, pod_id: str):
+        super().__init__(node_name, node_id, pod_id, "job")
+        self.__node_status: JobNodeStatus = JobNodeStatus.IDLE
+        self.__jobs: dict[str, Job] = dict()  # key is the job id
+
+    def get_node_status(self) -> JobNodeStatus:
+        return self.__node_status
 
     def set_running(self):
         self.__node_status = JobNodeStatus.RUNNING
@@ -115,11 +106,8 @@ class Node(object):
     def set_idle(self):
         self.__node_status = JobNodeStatus.IDLE
 
-    def set_online(self):
-        self.__node_status = ServerNodeStatus.ONLINE
-
-    def set_paused(self):
-        self.__node_status = ServerNodeStatus.PAUSED
+    def get_jobs(self) -> list[Job]:
+        return list(self.__jobs.values())
 
     def add_job(self, job: Job):
         if job.get_job_id() in self.__jobs:
@@ -128,9 +116,38 @@ class Node(object):
 
     def toJSON(self) -> dict:
         return {
-            "node_name": self.__node_name,
-            "node_id": self.__node_id,
-            "node_status": self.__node_status,
+            "node_name": self.get_node_name(),
+            "node_id": self.get_node_id(),
+            "node_status": self.get_node_status(),
+        }
+
+
+class ServerNode(Node):
+    def __init__(self, node_name: str, node_id: str, pod_id: str, port: int):
+        super().__init__(node_name, node_id, pod_id, "server")
+        self.__node_status: ServerNodeStatus = ServerNodeStatus.NEW
+        self.__port: int = port
+
+    def get_node_status(self) -> ServerNodeStatus:
+        return self.__node_status
+
+    def set_online(self):
+        self.__node_status = ServerNodeStatus.ONLINE
+
+    def set_paused(self):
+        self.__node_status = ServerNodeStatus.PAUSED
+
+    def get_port(self) -> int:
+        if self.__port is None:
+            raise Exception("server node port is not set somehow")
+        return self.__port
+
+    def toJSON(self) -> dict:
+        return {
+            "node_name": self.get_node_name(),
+            "node_id": self.get_node_id(),
+            "node_status": self.get_node_status(),
+            "port": self.get_port(),
         }
 
 
@@ -138,7 +155,7 @@ class Pod(object):
     def __init__(self, pod_name: str):
         self.__pod_name: str = pod_name
         self.__pod_id: str = "".join(secrets.choice(alphabet) for _ in range(12))
-        self.__nodes: dict[str, Node] = dict()  # key is the node id
+        self.__nodes: dict[str, ServerNode | JobNode] = dict()  # key is the node id
         self.__cpu_percent_cap: float
         self.__is_elastic: bool = False
         self.__lower_threshold: int = 20
@@ -152,33 +169,28 @@ class Pod(object):
     def get_pod_id(self) -> str:
         return self.__pod_id
 
-    def get_node_by_id(self, node_id: str) -> Node:
+    def get_node_by_id(self, node_id: str) -> ServerNode | JobNode:
         try:
             return self.__nodes[node_id]
         except KeyError:
             raise Exception("node does not exist")
 
-    def get_nodes(self) -> list[Node]:
+    def get_nodes(self) -> list[JobNode | ServerNode]:
         return list(self.__nodes.values())
 
-    def get_server_nodes(self) -> list[Node]:
-        return list(
-            filter(lambda node: node.get_node_type() == "server", self.__nodes.values())
-        )
+    def get_server_nodes(self) -> list[ServerNode]:
+        return [node for node in self.__nodes.values() if isinstance(node, ServerNode)]
 
-    def add_node(self, node: Node):
+    def add_node(self, node: ServerNode | JobNode):
         if node.get_node_id() in self.__nodes:
             raise Exception("node already exists")
         self.__nodes[node.get_node_id()] = node
 
-    def remove_node_by_id(self, node_id: str) -> Node:
+    def remove_node_by_id(self, node_id: str) -> JobNode | ServerNode:
         node = self.get_node_by_id(node_id)
         if node == None:
             raise Exception("node does not exist")
-        if (
-            node.get_node_type() == "job"
-            and node.get_node_status() != JobNodeStatus.IDLE
-        ):
+        if isinstance(node, JobNode) and node.get_node_status() != JobNodeStatus.IDLE:
             raise Exception("job node is not idle")
         try:
             return self.__nodes.pop(node_id)
@@ -230,8 +242,8 @@ class Cluster(object):
         self.__initialized: bool = False
         self.__type: str
         self.__pods: dict[str, Pod] = dict()  # key is the pod id
-        self.__nodes: dict[str, Node] = dict()  # key is the node id
-        self.__available_job_nodes: deque[Node] = deque()
+        self.__nodes: dict[str, JobNode | ServerNode] = dict()  # key is the node id
+        self.__available_job_nodes: deque[JobNode] = deque()
         self.__running_job: dict[str, Job] = dict()  # key is the job id
         self.__available_port: int = 9999
         self.__cpu_limit: float
@@ -295,32 +307,29 @@ class Cluster(object):
                 return True
         return False
 
-    def add_node(self, node: Node):
+    def add_node(self, node: JobNode | ServerNode):
         if node.get_node_id() in self.__nodes:
             raise Exception("node id already exists")
         self.__nodes[node.get_node_id()] = node
 
-    def get_node_by_id(self, node_id: str) -> Node:
+    def get_node_by_id(self, node_id: str) -> JobNode | ServerNode:
         try:
             return self.__nodes[node_id]
         except KeyError:
             raise Exception(f"node with id {node_id} does not exist")
 
-    def remove_node_by_id(self, node_id: str) -> Node:
+    def remove_node_by_id(self, node_id: str) -> JobNode | ServerNode:
         node = self.get_node_by_id(node_id)
         if node == None:
             raise Exception("node does not exist")
-        if (
-            node.get_node_type() == "job"
-            and node.get_node_status() != JobNodeStatus.IDLE
-        ):
+        if isinstance(node, JobNode) and node.get_node_status() != JobNodeStatus.IDLE:
             raise Exception("job node is not idle")
         try:
             return self.__nodes.pop(node_id)
         except KeyError:
             raise Exception("node does not exist")
 
-    def add_available_job_node(self, node: Node):
+    def add_available_job_node(self, node: JobNode):
         self.__available_job_nodes.append(node)
 
     def has_available_job_nodes(self) -> bool:
@@ -330,12 +339,12 @@ class Cluster(object):
             and self.__available_job_nodes[0].get_node_status() == JobNodeStatus.IDLE
         )
 
-    def pop_available_job_node(self) -> Node:
+    def pop_available_job_node(self) -> JobNode:
         if not self.has_available_job_nodes():
             raise Exception("no available nodes")
         return self.__available_job_nodes.popleft()
 
-    def remove_available_job_node(self, node: Node):
+    def remove_available_job_node(self, node: JobNode):
         self.__available_job_nodes.remove(node)
 
     def add_running_job(self, job: Job):
@@ -349,18 +358,16 @@ class Cluster(object):
         except KeyError:
             raise Exception(f"job with id {job_id} does not exist in the running list")
 
-    # def get_jobs(self) -> list[Job]:
-    #     return list(self.__running_job_nodes.values())
-
     def get_jobs_under_node_id(self, node_id: str | None = None) -> list[Job]:
         rtn = []
         for pod in self.get_pods():
             for node in pod.get_nodes():
-                if node_id:
-                    if node.get_node_id() == node_id:
+                if isinstance(node, JobNode):
+                    if node_id:
+                        if node.get_node_id() == node_id:
+                            rtn.extend(node.get_jobs())
+                    else:
                         rtn.extend(node.get_jobs())
-                else:
-                    rtn.extend(node.get_jobs())
         return rtn
 
     def get_available_port(self) -> int:

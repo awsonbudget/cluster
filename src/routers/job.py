@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, UploadFile
-from src.internal.cluster import Job
+from src.internal.cluster import Job, ServerNode
 from src.utils.config import cluster, dc, address
 from src.internal.auth import verify_setup
 from src.internal.type import Resp, JobNodeStatus, JobStatus
@@ -102,6 +102,11 @@ async def job_abort(job_id: str) -> Resp:
         job = cluster.remove_running_job(job_id)
         job.set_aborted()
         node = cluster.get_node_by_id(job.get_node_id())
+        if isinstance(node, ServerNode):
+            return Resp(
+                status=False,
+                msg=f"cluster: node {node.get_node_id()} is not a job node",
+            )
         cluster.add_available_job_node(node)
     except Exception as e:
         print(e)

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 import docker.errors
 
 from src.internal.type import Resp
-from src.internal.cluster import Node
+from src.internal.cluster import JobNode, ServerNode
 from src.utils.config import cluster, dc, cluster_type
 from src.internal.auth import verify_setup
 
@@ -81,6 +81,7 @@ async def node_register(
     try:
         container = None
         port = None
+        node = None
         if node_type == "job":
             container = dc.api.create_container(
                 image="ubuntu",
@@ -94,6 +95,11 @@ async def node_register(
             print("ID: " + container.get("Id"))
             container = dc.containers.get(container.get("Id"))
             container.start()  # type: ignore
+            node = JobNode(
+                node_name=node_name,
+                node_id=container.id[0:12],  # type: ignore
+                pod_id=pod_id,
+            )  # type: ignore
         elif node_type == "server":
             port = cluster.get_available_port()
             img = dc.images.get("aob-example-express:1.0")
@@ -112,20 +118,19 @@ async def node_register(
                 mem_limit=str(cluster.get_mem_limit()) + "m",
             )
             print(f"{identifier} registered on port: {port}")
+            node = ServerNode(
+                node_name=node_name,
+                node_id=container.id[0:12],  # type: ignore
+                pod_id=pod_id,
+                port=port,
+            )  # type: ignore
 
         assert container != None  # type: ignore
-        node = Node(
-            node_name=node_name,
-            node_id=container.id[0:12],  # type: ignore
-            pod_id=pod_id,
-            node_type=node_type,
-            port=port,
-        )  # type: ignore
 
         try:
             pod.add_node(node)
             cluster.add_node(node)
-            if node_type == "job":
+            if isinstance(node, JobNode):
                 cluster.add_available_job_node(node)
         except Exception as e:
             print(e)
@@ -159,7 +164,7 @@ async def node_rm(node_id: str) -> Resp:
         try:
             pod.remove_node_by_id(node.get_node_id())
             cluster.remove_node_by_id(node_id)
-            if node.get_node_type() == "job":
+            if isinstance(node, JobNode):
                 cluster.remove_available_job_node(node)
             else:
                 data["delete"] = True

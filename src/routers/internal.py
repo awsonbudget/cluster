@@ -1,6 +1,7 @@
 import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from src.internal.cluster import ServerNode
 from src.internal.type import Resp
 from src.utils.config import cluster, address
 from src.internal.auth import verify_setup
@@ -27,6 +28,9 @@ async def callback(job_id: str, node_id: str, exit_code: str, log: Log) -> Resp:
     node = cluster.get_node_by_id(job.get_node_id())
     if node == None:
         raise Exception(f"cluster: node {job.get_node_id()} does not exist")
+    if isinstance(node, ServerNode):
+        raise Exception(f"cluster: node {job.get_node_id()} is not a job node")
+
     node.set_idle()
     cluster.add_available_job_node(node)
 
