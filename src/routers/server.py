@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends
 from src.utils.config import cluster, dc
 from src.internal.auth import verify_setup
 from src.internal.type import Resp
-from src.utils.calculate import calculate_cpu_percent
 import docker.errors
 
 
@@ -19,29 +18,15 @@ async def server_stat(pod_id: str, node_id: str | None = None) -> Resp:
         for server in servers:
             if node_id != None and node_id != server.get_node_id():
                 continue
-            try:
-                container = dc.containers.get(server.get_node_id())
-                stats = container.stats(stream=False)  # type: ignore
-                cpu_usage: float = calculate_cpu_percent(
-                    stats, pod.get_cpu_percent_cap()
-                )  # percentage
-                mem_usage: int = stats["memory_stats"]["usage"]  # bytes
-                network_in: int = stats["networks"]["eth0"]["rx_bytes"]
-                network_out: int = stats["networks"]["eth0"]["tx_bytes"]
-                data[server.get_node_id()] = (
-                    {
-                        "cpu_usage": cpu_usage,
-                        "mem_usage": mem_usage,
-                        "network_in": network_in,
-                        "network_out": network_out,
-                    },
-                )
-                # print(server.get_node_id())
-                # print(cpu_usage, mem_usage, network_in, network_out)
 
-            except docker.errors.APIError as e:
-                print(e)
-                return Resp(status=False, msg=f"cluster: docker.errors.APIError")
+            data[node_id] = (
+                {
+                    "cpu_usage": server.get_cpu_usage(),
+                    "mem_usage": server.get_mem_usage(),
+                    "network_in": server.get_network_in(),
+                    "network_out": server.get_network_out(),
+                },
+            )
 
         return Resp(status=True, data=data)
 

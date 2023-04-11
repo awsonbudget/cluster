@@ -8,20 +8,17 @@ import docker.errors
 
 from src.utils.config import cluster, dc
 from src.utils.calculate import calculate_cpu_percent
-from src.utils.config import cluster_type, address
+from src.utils.config import address
 
 
 async def load_monitor():
     while True:
-        await asyncio.sleep(3)
+        await asyncio.sleep(0.5)
         if cluster.is_initialized():
             print("--------------------")
             print(f"{datetime.now()} - Load monitor is running")
 
             for pod in cluster.get_pods():
-                if pod.get_is_elastic() == False:
-                    continue
-
                 total = 0
                 usage = 0
                 for server in pod.get_server_nodes():
@@ -30,13 +27,26 @@ async def load_monitor():
                     try:
                         container = dc.containers.get(server.get_node_id())
                         stats = container.stats(stream=False)  # type: ignore
+
                         cpu_usage: float = calculate_cpu_percent(
                             stats, pod.get_cpu_percent_cap()
                         )  # percentage
+                        mem_usage: int = stats["memory_stats"]["usage"]  # bytes
+                        network_in: int = stats["networks"]["eth0"]["rx_bytes"]
+                        network_out: int = stats["networks"]["eth0"]["tx_bytes"]
+
+                        server.set_cpu_usage(cpu_usage)
+                        server.set_mem_usage(mem_usage)
+                        server.set_network_in(network_in)
+                        server.set_network_out(network_out)
+
                         total += 1
                         usage += cpu_usage
                     except docker.errors.APIError as e:
                         print(e)
+
+                if not pod.get_is_elastic():
+                    continue
 
                 if total == 0:
                     print("No active server nodes found")

@@ -127,6 +127,34 @@ class ServerNode(Node):
         super().__init__(node_name, node_id, pod_id, "server")
         self.__node_status: ServerNodeStatus = ServerNodeStatus.NEW
         self.__port: int = port
+        self.__cpu_usage: float = 0.0
+        self.__mem_usage: int = 0
+        self.__network_in: int = 0
+        self.__network_out: int = 0
+
+    def get_cpu_usage(self) -> float:
+        return self.__cpu_usage
+
+    def get_mem_usage(self) -> int:
+        return self.__mem_usage
+
+    def get_network_in(self) -> int:
+        return self.__network_in
+
+    def get_network_out(self) -> int:
+        return self.__network_out
+
+    def set_cpu_usage(self, cpu_usage: float):
+        self.__cpu_usage = cpu_usage
+
+    def set_mem_usage(self, mem_usage: int):
+        self.__mem_usage = mem_usage
+
+    def set_network_in(self, network_in: int):
+        self.__network_in = network_in
+
+    def set_network_out(self, network_out: int):
+        self.__network_out = network_out
 
     def get_node_status(self) -> ServerNodeStatus:
         return self.__node_status
