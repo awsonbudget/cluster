@@ -72,7 +72,7 @@ async def server_launch(pod_id: str) -> Resp:
         print(e)
         return Resp(status=False, msg=f"cluster: pod {pod_id} launch failed: {e}")
 
-    return Resp(status=True, msg="cluster: pod {pod_id} launch success", data=ports)
+    return Resp(status=True, msg=f"cluster: pod {pod_id} launch success", data=ports)
 
 
 @router.post("/cloud/server/resume/", dependencies=[Depends(verify_setup)])

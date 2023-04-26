@@ -107,6 +107,8 @@ async def job_abort(job_id: str) -> Resp:
                 status=False,
                 msg=f"cluster: node {node.get_node_id()} is not a job node",
             )
+        container = dc.containers.get(node.get_node_id())
+        container.restart()  # type: ignore
         cluster.add_available_job_node(node)
     except Exception as e:
         print(e)
